@@ -1,0 +1,22 @@
+# Raw data (large files, not committed)
+data/raw/
+
+# Pipeline outputs (regenerated from raw data)
+data/modified/
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node (if any)
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
