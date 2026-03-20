@@ -1,8 +1,7 @@
 # Raw data (large files, not committed)
 data/raw/
 
-# Pipeline outputs (regenerated from raw data)
-data/modified/
+# Build reports (regenerated)
 output/
 
 # Python
