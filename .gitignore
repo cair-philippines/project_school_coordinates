@@ -1,5 +1,7 @@
 # Raw data (large files, not committed)
-data/raw/
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/README.md
 
 # Build reports (regenerated)
 output/
