@@ -77,7 +77,13 @@ function robustBounds(markers) {
  * - When markers change (filter applied), fit robust bounds
  * - When markers are cleared, reset to Philippines view
  */
-function MapViewController({ selectedSchool, markers }) {
+/**
+ * @param {string} mode — "idle", "search", or "filter"
+ *   In search mode, markers appear passively (no auto-zoom).
+ *   The map only moves when a school is explicitly selected (clicked).
+ *   In filter mode, the map fits bounds to all markers.
+ */
+function MapViewController({ selectedSchool, markers, mode }) {
   const map = useMap();
   const prevSignature = useRef("");
   const prevSelectedId = useRef(null);
@@ -97,7 +103,7 @@ function MapViewController({ selectedSchool, markers }) {
     const isSelected = selectedId;
     prevSelectedId.current = selectedId;
 
-    // Case 1: School selected — fly to it
+    // Case 1: School explicitly selected — fly to it (all modes)
     if (isSelected && selectedSchool?.latitude && selectedSchool?.longitude) {
       map.flyTo([selectedSchool.latitude, selectedSchool.longitude], 16, {
         duration: 1.2,
@@ -106,8 +112,8 @@ function MapViewController({ selectedSchool, markers }) {
       return;
     }
 
-    // Case 2: School was deselected — fit bounds to current markers
-    if (wasSelected && !isSelected && markers.length > 0) {
+    // Case 2: School was deselected — fit bounds to current markers (filter mode only)
+    if (wasSelected && !isSelected && markers.length > 0 && mode !== "search") {
       const bounds = robustBounds(markers);
       if (bounds && bounds.isValid()) {
         map.flyToBounds(bounds, {
@@ -120,11 +126,13 @@ function MapViewController({ selectedSchool, markers }) {
       return;
     }
 
-    // Case 3: Markers changed (filter/search results updated)
+    // Case 3: Markers changed
     if (signature !== prevSignature.current) {
       if (signature === "empty") {
+        // Reset to Philippines view when markers clear
         map.flyTo(PH_CENTER, PH_ZOOM, { duration: 1.0 });
-      } else {
+      } else if (mode !== "search") {
+        // Filter mode: auto-zoom to bounds
         const bounds = robustBounds(markers);
         if (bounds && bounds.isValid()) {
           map.flyToBounds(bounds, {
@@ -134,9 +142,10 @@ function MapViewController({ selectedSchool, markers }) {
           });
         }
       }
+      // Search mode: markers appear but map stays put (no zoom)
       prevSignature.current = signature;
     }
-  }, [signature, selectedId, selectedSchool, markers, map]);
+  }, [signature, selectedId, selectedSchool, markers, mode, map]);
 
   return null;
 }
@@ -167,7 +176,7 @@ function capMarkers(withCoords) {
   return [...sample(pub, pubSlots), ...sample(priv, privSlots)];
 }
 
-export default function SchoolMap({ schools, selectedSchool }) {
+export default function SchoolMap({ schools, selectedSchool, mode = "idle" }) {
   // All schools with coords — used for bounds calculation
   const allWithCoords = useMemo(() => {
     return schools.filter((s) => s.latitude && s.longitude);
@@ -190,7 +199,7 @@ export default function SchoolMap({ schools, selectedSchool }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
       />
-      <MapViewController selectedSchool={selectedSchool} markers={allWithCoords} />
+      <MapViewController selectedSchool={selectedSchool} markers={allWithCoords} mode={mode} />
       {markers.map((school) => (
         <Marker
           key={school.school_id}

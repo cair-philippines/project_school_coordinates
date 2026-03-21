@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, X, MapPin, School } from "lucide-react";
 
-export default function SearchBar({ onSearch, onSelect, results, loading }) {
+export default function SearchBar({ onSearch, onSelect, results, loading, externalClear }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -9,6 +9,15 @@ export default function SearchBar({ onSearch, onSelect, results, loading }) {
   const debounceRef = useRef(null);
   // Flag to suppress the search effect when query changes due to selection
   const isSelectingRef = useRef(false);
+
+  // Allow parent to clear the search bar (e.g., when detail panel is closed)
+  useEffect(() => {
+    if (externalClear) {
+      isSelectingRef.current = true;
+      setQuery("");
+      setOpen(false);
+    }
+  }, [externalClear]);
 
   // Debounced search — only fires for user typing, not programmatic selection
   useEffect(() => {

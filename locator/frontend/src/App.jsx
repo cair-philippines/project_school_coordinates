@@ -33,6 +33,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState({});
   const [selectedSchool, setSelectedSchool] = useState(null);
+  const [searchClearSignal, setSearchClearSignal] = useState(0);
 
   // Tracks whether filter change was programmatic (from clearing) vs user-initiated
   const filterChangeIsReset = useRef(false);
@@ -114,6 +115,7 @@ function App() {
         searchSchools({ _clear: true });
       }
       setSearchQuery("");
+      setSearchClearSignal((c) => c + 1);
       setSelectedSchool(null);
       setActiveFilters(newFilters);
       setMode("filter");
@@ -131,7 +133,14 @@ function App() {
 
   const handleCloseDetail = useCallback(() => {
     setSelectedSchool(null);
-  }, []);
+    // In search mode, closing the detail panel resets to idle
+    // (the user is done with that school)
+    if (mode === "search") {
+      setSearchQuery("");
+      setSearchClearSignal((c) => c + 1);
+      setMode("idle");
+    }
+  }, [mode]);
 
   return (
     <div className="h-full flex flex-col">
@@ -155,6 +164,7 @@ function App() {
               onSelect={handleSearchSelect}
               results={mode === "search" ? results : []}
               loading={mode === "search" && loading}
+              externalClear={searchClearSignal}
             />
           </div>
         </div>
@@ -189,6 +199,7 @@ function App() {
           <SchoolMap
             schools={mode !== "idle" ? results : []}
             selectedSchool={selectedSchool}
+            mode={mode}
           />
         </div>
 
