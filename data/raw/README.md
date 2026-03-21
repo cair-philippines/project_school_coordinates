@@ -20,3 +20,11 @@ This directory contains the untouched source files used by the pipelines. These 
 | Filename | Description | Source |
 |---|---|---|
 | `Private School Seats and TOSF ao 2025Oct27.xlsx` | Self-reported private school coordinates and GASTPE data (as of Oct 27, 2025) | DepEd Private Education Office (PEO) |
+
+### PSGC Standardization (both pipelines)
+
+| Filename | Description | Source |
+|---|---|---|
+| `SY 2024-2025 School Level Database WITH PSGC.xlsx` | School-to-PSGC crosswalk (60,094 schools, Q4 2024 PSGC) | DepEd (manually validated) |
+
+The barangay shapefile for spatial validation is at `data/modified/phl_admbnda_adm4_updated/` (Q4 2025 PSGC, generated from `cair-philippines/open-data-philippine-maps`).

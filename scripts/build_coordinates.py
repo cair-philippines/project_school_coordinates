@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import pandas as pd
 import numpy as np
 from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan, load_drrms
-from modules import build_crosswalk, load_enrollment
+from modules import build_crosswalk, load_enrollment, load_psgc, validate_psgc
 from modules.utils import (
     COORD_PRIORITY,
     LOCATION_PRIORITY,
@@ -422,6 +422,18 @@ def write_output(result, crosswalk, report_text):
         "barangay",
         "location_source",
         "enrollment_status",
+        "psgc_region",
+        "psgc_region_name",
+        "psgc_province",
+        "psgc_province_name",
+        "psgc_municity",
+        "psgc_municity_name",
+        "psgc_barangay",
+        "psgc_barangay_name",
+        "psgc_observed_barangay",
+        "psgc_validation",
+        "urban_rural",
+        "income_class",
     ]
     coords_df = result[coord_cols].sort_values("school_id").reset_index(drop=True)
 
@@ -518,6 +530,25 @@ def tag_enrollment_status(result, crosswalk):
     return result
 
 
+def append_psgc(result):
+    """Join PSGC crosswalk and run spatial validation."""
+    root = str(PROJECT_ROOT)
+
+    print("\nAppending PSGC codes...")
+    psgc = load_psgc.load(root)
+    print(f"  PSGC crosswalk: {len(psgc):,} schools")
+
+    result = result.merge(psgc, on="school_id", how="left")
+    matched = result["psgc_barangay"].notna().sum()
+    print(f"  Matched: {matched:,} / {len(result):,}")
+
+    print("\nSpatial validation (point-in-polygon)...")
+    result = validate_psgc.spatial_lookup(root, result)
+    result = validate_psgc.validate(result)
+
+    return result
+
+
 def main():
     sources = load_all_sources()
     sources, crosswalk = build_and_apply_crosswalk(sources)
@@ -525,6 +556,7 @@ def main():
     result = apply_coord_cascade(universe, sources)
     result = attach_location(result, sources)
     result = tag_enrollment_status(result, crosswalk)
+    result = append_psgc(result)
     report_text = validate_and_report(result, sources, crosswalk)
     write_output(result, crosswalk, report_text)
     print("\nDone.")

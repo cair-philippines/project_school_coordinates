@@ -20,7 +20,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 import numpy as np
-from modules import load_private_tosf, load_enrollment
+from modules import load_private_tosf, load_enrollment, load_psgc, validate_psgc
 
 OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "modified"
 OUTPUT_REPORT_DIR = PROJECT_ROOT / "output"
@@ -248,6 +248,18 @@ def write_output(result):
         "shsvp_participating",
         "jdvp_participating",
         "enrollment_status",
+        "psgc_region",
+        "psgc_region_name",
+        "psgc_province",
+        "psgc_province_name",
+        "psgc_municity",
+        "psgc_municity_name",
+        "psgc_barangay",
+        "psgc_barangay_name",
+        "psgc_observed_barangay",
+        "psgc_validation",
+        "urban_rural",
+        "income_class",
     ]
     out = result[final_cols].sort_values("school_id").reset_index(drop=True)
 
@@ -306,11 +318,31 @@ def write_output(result):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def append_psgc(result):
+    """Join PSGC crosswalk and run spatial validation."""
+    root = str(PROJECT_ROOT)
+
+    print("\nAppending PSGC codes...")
+    psgc = load_psgc.load(root)
+    print(f"  PSGC crosswalk: {len(psgc):,} schools")
+
+    result = result.merge(psgc, on="school_id", how="left")
+    matched = result["psgc_barangay"].notna().sum()
+    print(f"  Matched: {matched:,} / {len(result):,}")
+
+    print("\nSpatial validation (point-in-polygon)...")
+    result = validate_psgc.spatial_lookup(root, result)
+    result = validate_psgc.validate(result)
+
+    return result
+
+
 def main():
     universe, coords, clean_stats = load_sources()
     result = merge(universe, coords)
     result = expand_from_enrollment(result)
     result = tag_enrollment_status(result)
+    result = append_psgc(result)
     validate_and_report(result, clean_stats)
     write_output(result)
     print("\nDone.")

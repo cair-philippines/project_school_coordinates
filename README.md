@@ -84,6 +84,14 @@ Two separate pipelines address the distinct challenges of each sector:
 | `barangay` | Barangay |
 | `location_source` | Which source provided the admin fields |
 | `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
+| `psgc_region` | 10-digit PSGC region code |
+| `psgc_province` | 10-digit PSGC province code |
+| `psgc_municity` | 10-digit PSGC municipality/city code |
+| `psgc_barangay` | 10-digit PSGC barangay code (claimed) |
+| `psgc_observed_barangay` | PSGC barangay from point-in-polygon |
+| `psgc_validation` | `psgc_match`, `psgc_mismatch`, or `psgc_no_validation` |
+| `urban_rural` | Urban/Rural classification |
+| `income_class` | Municipal income class (DOF) |
 
 ### School ID Crosswalk Schema
 
@@ -114,6 +122,14 @@ Two separate pipelines address the distinct challenges of each sector:
 | `shsvp_participating` | SHS VP flag (1/0) |
 | `jdvp_participating` | JDVP flag (1/0) |
 | `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
+| `psgc_region` | 10-digit PSGC region code |
+| `psgc_province` | 10-digit PSGC province code |
+| `psgc_municity` | 10-digit PSGC municipality/city code |
+| `psgc_barangay` | 10-digit PSGC barangay code (claimed) |
+| `psgc_observed_barangay` | PSGC barangay from point-in-polygon |
+| `psgc_validation` | `psgc_match`, `psgc_mismatch`, or `psgc_no_validation` |
+| `urban_rural` | Urban/Rural classification |
+| `income_class` | Municipal income class (DOF) |
 
 ## Usage
 
@@ -154,6 +170,8 @@ project_coordinates/
 │   ├── load_geolocation.py               # Public: Source D loader
 │   ├── load_drrms.py                     # Public: Source E loader (DRRMS IMRS)
 │   ├── load_enrollment.py                # Public: enrollment-based universe expansion
+│   ├── load_psgc.py                      # PSGC crosswalk loader
+│   ├── validate_psgc.py                  # Shapefile-based spatial validation
 │   ├── load_private_tosf.py              # Private: TOSF loader + coordinate cleaning
 │   └── utils.py                          # Shared helpers
 ├── documentation/

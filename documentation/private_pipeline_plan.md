@@ -105,15 +105,20 @@ This identifies schools that may have ceased operations or not yet reported. The
 
 **Current result**: 11,940 active, 228 with no enrollment reported.
 
+### Step 4.5: PSGC Standardization & Spatial Validation
+
+Same process as the public pipeline — see **[PSGC Standardization Plan](psgc_standardization_plan.md)**. Appends PSGC codes and validates coordinates against barangay polygons.
+
 ### Step 5: Validation & Report
 
 - Coordinate coverage: how many of the total universe have valid coordinates
 - Cleaning statistics: swaps fixed, invalids rejected, out-of-bounds rejected
 - Enrollment expansion and status counts
+- PSGC validation summary (match/mismatch/no_validation)
 - GASTPE participation summary
 - Write to `output/build_private_report.txt`
 
-### Step 5: Output
+### Step 6: Output
 
 #### Schema
 
@@ -134,6 +139,18 @@ This identifies schools that may have ceased operations or not yet reported. The
 | `shsvp_participating` | SHS VP flag (1/0) |
 | `jdvp_participating` | JDVP flag (1/0) |
 | `enrollment_status` | `active` (in enrollment data) or `no_enrollment_reported` |
+| `psgc_region` | 10-digit PSGC region code |
+| `psgc_region_name` | PSA region name |
+| `psgc_province` | 10-digit PSGC province code |
+| `psgc_province_name` | PSA province name |
+| `psgc_municity` | 10-digit PSGC municipality/city code |
+| `psgc_municity_name` | PSA municipality/city name |
+| `psgc_barangay` | 10-digit PSGC barangay code (claimed, from crosswalk) |
+| `psgc_barangay_name` | PSA barangay name (claimed) |
+| `psgc_observed_barangay` | 10-digit PSGC barangay code (from point-in-polygon) |
+| `psgc_validation` | `psgc_match`, `psgc_mismatch`, or `psgc_no_validation` |
+| `urban_rural` | Urban/Rural classification (2020 CPH) |
+| `income_class` | Municipal income class (DOF) |
 
 #### Output Files
 
@@ -153,6 +170,7 @@ This identifies schools that may have ceased operations or not yet reported. The
 5. **Location columns from universe, not self-reported** — the LIS master list has standardized admin metadata; the Google Form responses have inconsistent formatting (e.g., "Province of Laguna" vs "Laguna" vs "LAGUNA").
 6. **GASTPE flags preserved** — ESC, SHS VP, and JDVP participation is useful context for downstream policy analysis.
 7. **Enrollment data expands the universe and tags status.** Schools in enrollment but not in LIS are added with null coordinates and `not_in_lis` rejection reason. All schools receive an `enrollment_status` tag so downstream users can distinguish active schools from those with no reported enrollment.
+8. **PSGC is appended, not replacing DepEd locality columns.** Spatial validation flags mismatches for review without auto-correcting. See [PSGC Standardization Plan](psgc_standardization_plan.md).
 
 ## Related Documentation
 

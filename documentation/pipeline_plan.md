@@ -170,6 +170,16 @@ Record per school:
 - For enrollment-only schools (no coordinate source), location columns come from the enrollment file
 - Record `location_source` to track provenance of admin fields
 
+### Step 4.5: PSGC Standardization & Spatial Validation
+
+Appends PSGC codes and PSA-standard names, then validates coordinates against barangay polygons. See **[PSGC Standardization Plan](psgc_standardization_plan.md)** for full details.
+
+**Process**:
+1. Load PSGC crosswalk (`modules/load_psgc.py`) — maps school_id → PSGC codes/names, pads codes to 10 digits
+2. Left-join to coordinates dataset by school_id
+3. Load barangay shapefile (`modules/validate_psgc.py`) and perform point-in-polygon for all schools with coordinates
+4. Compare claimed PSGC barangay (from crosswalk) vs observed (from spatial lookup) and tag as `psgc_match`, `psgc_mismatch`, or `psgc_no_validation`
+
 ### Step 5: Validation & Report
 
 - Flag schools with no coordinates from any source
@@ -197,6 +207,18 @@ Record per school:
 | `barangay` | Barangay |
 | `location_source` | Source that provided admin fields |
 | `enrollment_status` | `active` (in enrollment data) or `no_enrollment_reported` |
+| `psgc_region` | 10-digit PSGC region code |
+| `psgc_region_name` | PSA region name |
+| `psgc_province` | 10-digit PSGC province code |
+| `psgc_province_name` | PSA province name |
+| `psgc_municity` | 10-digit PSGC municipality/city code |
+| `psgc_municity_name` | PSA municipality/city name |
+| `psgc_barangay` | 10-digit PSGC barangay code (claimed, from crosswalk) |
+| `psgc_barangay_name` | PSA barangay name (claimed) |
+| `psgc_observed_barangay` | 10-digit PSGC barangay code (from point-in-polygon) |
+| `psgc_validation` | `psgc_match`, `psgc_mismatch`, or `psgc_no_validation` |
+| `urban_rural` | Urban/Rural classification (2020 CPH) |
+| `income_class` | Municipal income class (DOF) |
 
 #### School ID Crosswalk Schema
 
@@ -230,7 +252,9 @@ Record per school:
 7. **Canonical ID is always the most recent ID**, reflecting DepEd's current administrative state.
 8. **Enrollment data expands the universe, not the coordinates.** Enrollment files identify schools that exist but have no geolocation data. These are included with null coordinates rather than silently excluded, ensuring the output is a complete roster of known public schools. The enrollment loader is generalized to accept any future enrollment CSV.
 9. **Private schools are excluded from public sources after crosswalk remapping.** OSMapaaralan contains both public and private school footprints. Known private school IDs (from the TOSF LIS universe and enrollment data) are removed from all public source DataFrames after ID remapping, preventing sector duplication in the outputs.
+10. **PSGC is appended, not replacing DepEd locality columns.** The existing location columns from DepEd sources are retained alongside new PSGC-standardized columns. Spatial validation flags mismatches for human review without auto-correcting.
 
 ## Related Documentation
 
 - **[Technical Notes](technical_notes.md)** — comprehensive record of all processing and transformation decisions: source ingestion details, column mappings, crosswalk algorithms, threshold choices, validation results, and known limitations.
+- **[PSGC Standardization Plan](psgc_standardization_plan.md)** — PSGC crosswalk, spatial validation, and tagging methodology.
