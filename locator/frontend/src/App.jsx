@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MapPin } from "lucide-react";
+import { MapPin, Map, Table2 } from "lucide-react";
 import SearchBar from "./components/SearchBar";
 import SchoolMap from "./components/SchoolMap";
+import SchoolTable from "./components/SchoolTable";
 import StatsBar from "./components/StatsBar";
 import ResultsList from "./components/ResultsList";
 import FilterPanel from "./components/FilterPanel";
@@ -33,7 +34,9 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState({});
   const [selectedSchool, setSelectedSchool] = useState(null);
+  const [flyToTrigger, setFlyToTrigger] = useState(0); // incremented to force map fly-to
   const [searchClearSignal, setSearchClearSignal] = useState(0);
+  const [viewMode, setViewMode] = useState("map"); // "map" or "table"
 
   // Tracks whether filter change was programmatic (from clearing) vs user-initiated
   const filterChangeIsReset = useRef(false);
@@ -47,8 +50,7 @@ function App() {
     if (mode === "search" && searchQuery) {
       searchSchools({
         q: searchQuery,
-        limit: 100,
-        has_coords: true,
+        limit: 200,
       });
     } else if (mode === "filter") {
       const hasLocation = activeFilters.region || activeFilters.province ||
@@ -56,7 +58,6 @@ function App() {
       if (hasLocation) {
         searchSchools({
           ...activeFilters,
-          has_coords: true,
         });
       } else {
         // Filters were cleared — go idle
@@ -87,10 +88,8 @@ function App() {
 
   const handleSearchSelect = useCallback((school) => {
     if (school) {
-      // Enter a "selected" sub-state within search mode
-      // Don't change mode — keep "search" so the map controller
-      // knows this is a fly-to-school, not a filter change
       setSelectedSchool(school);
+      setFlyToTrigger((c) => c + 1);
     } else {
       // Search cleared
       setSearchQuery("");
@@ -111,7 +110,7 @@ function App() {
     if (hasLocation) {
       // If switching from search mode, clear results first so the map
       // sees an empty→populated transition and zooms to new bounds
-      if (mode === "search" || selectedSchool) {
+      if (mode === "search") {
         searchSchools({ _clear: true });
       }
       setSearchQuery("");
@@ -124,12 +123,16 @@ function App() {
       setMode("idle");
       setSelectedSchool(null);
     }
-  }, [mode, selectedSchool, searchSchools]);
+  }, [mode, searchSchools]);
 
-  // --- School selection from results list ---
+  // --- School selection from results list or table ---
   const handleSelectFromList = useCallback((school) => {
     setSelectedSchool(school);
-  }, []);
+    setFlyToTrigger((c) => c + 1);
+    if (viewMode === "table") {
+      setViewMode("map");
+    }
+  }, [viewMode]);
 
   const handleCloseDetail = useCallback(() => {
     setSelectedSchool(null);
@@ -194,13 +197,57 @@ function App() {
           </div>
         </aside>
 
-        {/* Map */}
-        <div className="flex-1 p-2">
-          <SchoolMap
-            schools={mode !== "idle" ? results : []}
-            selectedSchool={selectedSchool}
-            mode={mode}
-          />
+        {/* Main view area */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* View toggle */}
+          <div className="shrink-0 flex items-center gap-1 px-2 pt-2">
+            <button
+              onClick={() => setViewMode("map")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                viewMode === "map"
+                  ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "bg-[var(--secondary)] text-[var(--secondary-foreground)] hover:bg-[var(--accent)]"
+              }`}
+            >
+              <Map className="h-3.5 w-3.5" />
+              Map
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                viewMode === "table"
+                  ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "bg-[var(--secondary)] text-[var(--secondary-foreground)] hover:bg-[var(--accent)]"
+              }`}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              Table
+            </button>
+          </div>
+
+          {/* Map + Table share the same space */}
+          <div className="flex-1 p-2 min-h-0 relative">
+            {/* Map — always mounted, visually hidden when table is active */}
+            <div className={`absolute inset-2 ${viewMode === "map" ? "z-10" : "z-0 opacity-0 pointer-events-none"}`}>
+              <SchoolMap
+                schools={mode !== "idle" ? results : []}
+                selectedSchool={selectedSchool}
+                mode={mode}
+                flyToTrigger={flyToTrigger}
+              />
+            </div>
+
+            {/* Table — rendered on top when active */}
+            {viewMode === "table" && (
+              <div className="absolute inset-2 z-10">
+                <SchoolTable
+                  schools={mode !== "idle" ? results : []}
+                  onSelect={handleSelectFromList}
+                  selectedId={selectedSchool?.school_id}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right panel: school detail */}

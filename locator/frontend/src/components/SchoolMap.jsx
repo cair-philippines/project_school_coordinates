@@ -14,16 +14,62 @@ L.Icon.Default.mergeOptions({
 const PH_CENTER = [12.5, 122.0];
 const PH_ZOOM = 6;
 
-function createIcon(sector) {
-  const color = sector === "public" ? "#3b82f6" : "#ec4899";
+/**
+ * PSGC-aware marker colors:
+ *   Green — public, psgc_match
+ *   Blue  — private, psgc_match
+ *   Green pulsing — public, psgc_mismatch
+ *   Blue pulsing  — private, psgc_mismatch
+ *   Gray  — either sector, psgc_no_validation
+ */
+function createIcon(school) {
+  const validation = school.psgc_validation;
+
+  if (validation === "psgc_mismatch") {
+    const color = school.sector === "public" ? "#22c55e" : "#3b82f6";
+    const rgbaColor = school.sector === "public" ? "rgba(34,197,94,0.4)" : "rgba(59,130,246,0.4)";
+    return L.divIcon({
+      className: "",
+      html: `<div style="position:relative; width:16px; height:16px;">
+        <div style="
+          position:absolute; top:2px; left:2px;
+          width:12px; height:12px;
+          background:${color};
+          border:2px solid white;
+          border-radius:50%;
+          box-shadow:0 2px 4px rgba(0,0,0,0.3);
+          z-index:2;
+        "></div>
+        <div style="
+          position:absolute; top:0; left:0;
+          width:16px; height:16px;
+          border-radius:50%;
+          background:${rgbaColor};
+          animation:pulse-ring 2s ease-out infinite;
+        "></div>
+      </div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+      popupAnchor: [0, -10],
+    });
+  }
+
+  let color;
+  if (validation === "psgc_match") {
+    color = school.sector === "public" ? "#22c55e" : "#3b82f6";
+  } else {
+    // psgc_no_validation or null
+    color = "#9ca3b8";
+  }
+
   return L.divIcon({
     className: "",
     html: `<div style="
-      width: 12px; height: 12px;
-      background: ${color};
-      border: 2px solid white;
-      border-radius: 50%;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      width:12px; height:12px;
+      background:${color};
+      border:2px solid white;
+      border-radius:50%;
+      box-shadow:0 2px 4px rgba(0,0,0,0.3);
     "></div>`,
     iconSize: [12, 12],
     iconAnchor: [6, 6],
@@ -72,23 +118,18 @@ function robustBounds(markers) {
 }
 
 /**
- * Handles map view changes:
- * - When a school is selected, fly to it
- * - When markers change (filter applied), fit robust bounds
- * - When markers are cleared, reset to Philippines view
+ * Two independent effects:
+ * 1. flyToTrigger — explicit "fly to this school" command, highest priority
+ * 2. signature — markers changed from filter/search, fit bounds
+ *
+ * They don't interfere because flyToTrigger only fires on user click,
+ * and signature only fires on filter/search result changes.
  */
-/**
- * @param {string} mode — "idle", "search", or "filter"
- *   In search mode, markers appear passively (no auto-zoom).
- *   The map only moves when a school is explicitly selected (clicked).
- *   In filter mode, the map fits bounds to all markers.
- */
-function MapViewController({ selectedSchool, markers, mode }) {
+function MapViewController({ selectedSchool, markers, mode, flyToTrigger }) {
   const map = useMap();
   const prevSignature = useRef("");
-  const prevSelectedId = useRef(null);
+  const prevTrigger = useRef(0);
 
-  // Build a signature from the marker set to detect real changes
   const signature = useMemo(() => {
     if (markers.length === 0) return "empty";
     const first = markers[0]?.school_id || "";
@@ -96,24 +137,48 @@ function MapViewController({ selectedSchool, markers, mode }) {
     return `${markers.length}:${first}:${last}`;
   }, [markers]);
 
-  const selectedId = selectedSchool?.school_id || null;
-
+  // Effect 1: Explicit fly-to command (user clicked a school)
   useEffect(() => {
-    const wasSelected = prevSelectedId.current;
-    const isSelected = selectedId;
-    prevSelectedId.current = selectedId;
+    if (flyToTrigger === prevTrigger.current) return;
+    prevTrigger.current = flyToTrigger;
+    if (!selectedSchool) return;
 
-    // Case 1: School explicitly selected — fly to it (all modes)
-    if (isSelected && selectedSchool?.latitude && selectedSchool?.longitude) {
+    // Stop any in-progress animation
+    map.stop();
+
+    if (selectedSchool.latitude && selectedSchool.longitude) {
       map.flyTo([selectedSchool.latitude, selectedSchool.longitude], 16, {
         duration: 1.2,
       });
-      prevSignature.current = signature;
-      return;
+    } else {
+      // No coords — zoom to locality as best-effort
+      const locality = selectedSchool.municipality || selectedSchool.province || selectedSchool.region;
+      if (locality && markers.length > 0) {
+        const field = selectedSchool.municipality ? "municipality"
+          : selectedSchool.province ? "province" : "region";
+        const nearby = markers.filter(
+          (s) => s[field] && s[field].toLowerCase() === locality.toLowerCase()
+        );
+        if (nearby.length > 0) {
+          const bounds = robustBounds(nearby);
+          if (bounds && bounds.isValid()) {
+            map.flyToBounds(bounds, { padding: [40, 40], maxZoom: 13, duration: 1.2 });
+          }
+        }
+      }
     }
+    // Update signature so Effect 2 doesn't re-zoom
+    prevSignature.current = signature;
+  }, [flyToTrigger, selectedSchool, markers, signature, map]);
 
-    // Case 2: School was deselected — fit bounds to current markers (filter mode only)
-    if (wasSelected && !isSelected && markers.length > 0 && mode !== "search") {
+  // Effect 2: Markers changed (filter/search results updated)
+  useEffect(() => {
+    if (signature === prevSignature.current) return;
+    prevSignature.current = signature;
+
+    if (signature === "empty") {
+      map.flyTo(PH_CENTER, PH_ZOOM, { duration: 1.0 });
+    } else if (mode !== "search") {
       const bounds = robustBounds(markers);
       if (bounds && bounds.isValid()) {
         map.flyToBounds(bounds, {
@@ -122,30 +187,8 @@ function MapViewController({ selectedSchool, markers, mode }) {
           duration: 1.2,
         });
       }
-      prevSignature.current = signature;
-      return;
     }
-
-    // Case 3: Markers changed
-    if (signature !== prevSignature.current) {
-      if (signature === "empty") {
-        // Reset to Philippines view when markers clear
-        map.flyTo(PH_CENTER, PH_ZOOM, { duration: 1.0 });
-      } else if (mode !== "search") {
-        // Filter mode: auto-zoom to bounds
-        const bounds = robustBounds(markers);
-        if (bounds && bounds.isValid()) {
-          map.flyToBounds(bounds, {
-            padding: [40, 40],
-            maxZoom: 15,
-            duration: 1.2,
-          });
-        }
-      }
-      // Search mode: markers appear but map stays put (no zoom)
-      prevSignature.current = signature;
-    }
-  }, [signature, selectedId, selectedSchool, markers, mode, map]);
+  }, [signature, markers, mode, map]);
 
   return null;
 }
@@ -176,7 +219,7 @@ function capMarkers(withCoords) {
   return [...sample(pub, pubSlots), ...sample(priv, privSlots)];
 }
 
-export default function SchoolMap({ schools, selectedSchool, mode = "idle" }) {
+export default function SchoolMap({ schools, selectedSchool, mode = "idle", flyToTrigger = 0 }) {
   // All schools with coords — used for bounds calculation
   const allWithCoords = useMemo(() => {
     return schools.filter((s) => s.latitude && s.longitude);
@@ -199,12 +242,12 @@ export default function SchoolMap({ schools, selectedSchool, mode = "idle" }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
       />
-      <MapViewController selectedSchool={selectedSchool} markers={allWithCoords} mode={mode} />
+      <MapViewController selectedSchool={selectedSchool} markers={allWithCoords} mode={mode} flyToTrigger={flyToTrigger} />
       {markers.map((school) => (
         <Marker
           key={school.school_id}
           position={[school.latitude, school.longitude]}
-          icon={createIcon(school.sector)}
+          icon={createIcon(school)}
         >
           <Popup className="custom-popup">
             <div className="p-3">
