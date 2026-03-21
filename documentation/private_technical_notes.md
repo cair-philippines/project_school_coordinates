@@ -138,15 +138,41 @@ Left join: universe (12,011 schools) ← cleaned coordinates (9,632 submissions 
 
 **GASTPE flags**: Joined from RAW DATA where available (submitted schools only). Non-submitting schools receive 0 for all three flags.
 
+## 3.5 Enrollment-Based Universe Expansion
+
+The LIS master list (September 2025) may not capture every operational private school — schools may have opened or been reclassified between the LIS extract date and the enrollment reporting period.
+
+### 3.5.1 Process
+
+1. Load enrollment CSV, filter to `sector == "Private"`, deduplicate by school ID
+2. Compare against the LIS universe (12,011 schools)
+3. Add missing schools with `coord_status = "no_coords"`, `coord_rejection_reason = "not_in_lis"`
+4. Location columns sourced from the enrollment file; GASTPE flags set to 0
+
+**Result**: 157 private schools added from SY 2024-2025 enrollment data. Final universe: 12,168 schools.
+
+### 3.5.2 The 157 Schools
+
+These are private schools that have reported enrollment in SY 2024-2025 but do not appear in the September 2025 LIS master list used for the TOSF data collection. They have no coordinates because they were never part of the TOSF Google Form exercise. Their location columns come from the enrollment file.
+
+## 3.6 Enrollment Status Tagging
+
+Every school receives an `enrollment_status` tag by checking whether its ID appears in the SY 2024-2025 enrollment data (private sector):
+
+- **`active`** (11,940 schools) — has reported enrollment
+- **`no_enrollment_reported`** (228 schools) — in LIS/TOSF but no enrollment in SY 2024-2025
+
+The 228 schools with no reported enrollment are retained with their coordinates (if any) intact. They may have temporarily ceased operations, merged, or simply not yet reported. The tag is informational — it does not affect coordinates or location columns.
+
 ## 4. Validation Results
 
 ### 4.1 Coordinate Coverage
 
 | Metric | Count | % |
 |---|---|---|
-| Total private schools | 12,011 | 100% |
-| With coordinates | 8,914 | 74.2% |
-| Without coordinates | 3,097 | 25.8% |
+| Total private schools | 12,168 | 100% |
+| With coordinates | 8,914 | 73.3% |
+| Without coordinates | 3,254 | 26.7% |
 
 ### 4.2 Regional Coverage
 
@@ -162,7 +188,7 @@ Among submitting schools:
 ## 5. Output Formats
 
 ### 5.1 Parquet + CSV
-- `private_school_coordinates.parquet` — 12,011 rows, 14 columns
+- `private_school_coordinates.parquet` — 12,168 rows, 15 columns
 - `private_school_coordinates.csv` — same content
 
 ### 5.2 Excel Workbook

@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import pandas as pd
 import numpy as np
 from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan
-from modules import build_crosswalk
+from modules import build_crosswalk, load_enrollment
 from modules.utils import (
     COORD_PRIORITY,
     LOCATION_PRIORITY,
@@ -32,6 +32,11 @@ from modules.utils import (
 
 OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "modified"
 OUTPUT_REPORT_DIR = PROJECT_ROOT / "output"
+
+# Enrollment files for universe expansion (add paths here as needed)
+ENROLLMENT_FILES = [
+    PROJECT_ROOT / "data" / "raw" / "SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -71,15 +76,44 @@ def build_and_apply_crosswalk(sources):
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Establish the school universe
+# Step 2: Establish the school universe (with enrollment expansion)
 # ---------------------------------------------------------------------------
-def build_school_universe(sources):
-    """Union all school_ids across sources into a master DataFrame."""
+def build_school_universe(sources, crosswalk):
+    """Union all school_ids across sources, then expand from enrollment files."""
     all_ids = pd.concat(
         [df[["school_id"]].drop_duplicates() for df in sources.values()],
         ignore_index=True,
     ).drop_duplicates(subset="school_id")
-    print(f"\nSchool universe: {len(all_ids):,} unique canonical school IDs")
+    base_count = len(all_ids)
+    print(f"\nSchool universe (from coord sources): {base_count:,}")
+
+    # Expand from enrollment files
+    enrollment_additions = []
+    for filepath in ENROLLMENT_FILES:
+        if not filepath.exists():
+            print(f"  Enrollment file not found, skipping: {filepath.name}")
+            continue
+        enroll_df = load_enrollment.load(str(filepath))
+        universe_ids = set(all_ids["school_id"])
+        missing = load_enrollment.find_missing(enroll_df, universe_ids, crosswalk)
+        if len(missing) > 0:
+            enrollment_additions.append(missing)
+            print(f"  {filepath.name}: {len(missing):,} public schools not in coord sources")
+
+    if enrollment_additions:
+        additions = pd.concat(enrollment_additions, ignore_index=True)
+        additions = additions.drop_duplicates(subset="school_id", keep="first")
+        new_ids = additions[~additions["school_id"].isin(all_ids["school_id"])]
+        all_ids = pd.concat(
+            [all_ids, new_ids[["school_id"]]],
+            ignore_index=True,
+        )
+        # Store enrollment metadata for location fill later
+        build_school_universe._enrollment_meta = additions
+    else:
+        build_school_universe._enrollment_meta = pd.DataFrame()
+
+    print(f"  Final universe: {len(all_ids):,} (+{len(all_ids) - base_count:,} from enrollment)")
     return all_ids
 
 
@@ -200,6 +234,33 @@ def attach_location(result, sources):
         idx = result.loc[valid_ids.index].index
         result.loc[idx, "school_name"] = valid_matched["school_name"].values
 
+    # Fill remaining gaps from enrollment metadata (for enrollment-only schools)
+    enroll_meta = getattr(build_school_universe, "_enrollment_meta", pd.DataFrame())
+    if len(enroll_meta) > 0:
+        enroll_indexed = enroll_meta.set_index("school_id")
+        enroll_loc_cols = [c for c in loc_cols if c in enroll_indexed.columns]
+
+        needs_location = result["location_source"].isna()
+        in_enroll = result["school_id"].isin(enroll_indexed.index)
+        fill_mask = needs_location & in_enroll
+        fill_ids = result.loc[fill_mask, "school_id"]
+
+        if len(fill_ids) > 0:
+            matched = enroll_indexed.loc[fill_ids.values]
+            has_any = matched[enroll_loc_cols].notna().any(axis=1)
+            valid_ids = fill_ids[has_any.values]
+            if len(valid_ids) > 0:
+                valid_matched = enroll_indexed.loc[valid_ids.values]
+                idx = result.loc[valid_ids.index].index
+                for col in enroll_loc_cols:
+                    result.loc[idx, col] = valid_matched[col].values
+                result.loc[idx, "location_source"] = "enrollment"
+
+    # Tag enrollment-only schools in sources_available
+    if len(enroll_meta) > 0:
+        enroll_only = result["school_id"].isin(enroll_meta["school_id"]) & (result["coord_source"].isna())
+        result.loc[enroll_only, "sources_available"] = "enrollment_only"
+
     print(f"\nLocation source results:")
     print(result["location_source"].value_counts(dropna=False).to_string())
     return result
@@ -316,6 +377,7 @@ def write_output(result, crosswalk, report_text):
         "municipality",
         "barangay",
         "location_source",
+        "enrollment_status",
     ]
     coords_df = result[coord_cols].sort_values("school_id").reset_index(drop=True)
 
@@ -385,12 +447,40 @@ def write_output(result, crosswalk, report_text):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def tag_enrollment_status(result, crosswalk):
+    """Tag each school with enrollment status from enrollment files."""
+    all_enrolled = set()
+    for filepath in ENROLLMENT_FILES:
+        if not filepath.exists():
+            continue
+        ids = load_enrollment.get_enrollment_ids(
+            str(filepath), sector="public", crosswalk=crosswalk
+        )
+        all_enrolled.update(ids)
+
+    result["enrollment_status"] = result["school_id"].apply(
+        lambda x: "active" if x in all_enrolled else "no_enrollment_reported"
+    )
+    # Enrollment-only schools that ARE in enrollment are active
+    # (they were added from enrollment, so they must be active)
+    enroll_only = result["sources_available"] == "enrollment_only"
+    result.loc[enroll_only, "enrollment_status"] = "active"
+
+    active = (result["enrollment_status"] == "active").sum()
+    no_enroll = (result["enrollment_status"] == "no_enrollment_reported").sum()
+    print(f"\nEnrollment status:")
+    print(f"  active: {active:,}")
+    print(f"  no_enrollment_reported: {no_enroll:,}")
+    return result
+
+
 def main():
     sources = load_all_sources()
     sources, crosswalk = build_and_apply_crosswalk(sources)
-    universe = build_school_universe(sources)
+    universe = build_school_universe(sources, crosswalk)
     result = apply_coord_cascade(universe, sources)
     result = attach_location(result, sources)
+    result = tag_enrollment_status(result, crosswalk)
     report_text = validate_and_report(result, sources, crosswalk)
     write_output(result, crosswalk, report_text)
     print("\nDone.")

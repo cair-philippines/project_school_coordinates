@@ -78,16 +78,38 @@ Each school receives:
 
 ### Step 3: Merge Universe + Coordinates
 
-- Left join: universe (13,184) ← cleaned coordinates
+- Left join: universe (12,011) ← cleaned coordinates
 - Schools without submission or with rejected coordinates retain null lat/lon
 - **Location columns**: sourced from the universe sheet (LIS official metadata — more standardized than self-reported RAW DATA)
 - **School name**: prefer universe sheet (official LIS name) over self-reported name
 - **GASTPE flags**: joined from RAW DATA where available, null otherwise
 
-### Step 4: Validation & Report
+### Step 3.5: Enrollment-Based Universe Expansion
 
-- Coordinate coverage: how many of 13,184 have valid coordinates
+The LIS master list may not capture every operational private school. The pipeline expands the universe using enrollment data.
+
+- Load enrollment CSV(s), filter to `sector == "Private"`, deduplicate by school ID
+- Identify private schools in enrollment but not in the LIS universe
+- Add them with `coord_status = "no_coords"`, `coord_rejection_reason = "not_in_lis"`
+- Location columns from enrollment file; GASTPE flags set to 0
+
+**Current result**: 157 private schools added from SY 2024-2025 enrollment data.
+
+### Step 4: Tag Enrollment Status
+
+Every school receives an `enrollment_status` tag:
+- `active` — school ID found in SY 2024-2025 enrollment data (private sector)
+- `no_enrollment_reported` — school in LIS/TOSF but no enrollment reported
+
+This identifies schools that may have ceased operations or not yet reported. Their coordinates (if any) are retained.
+
+**Current result**: 11,940 active, 228 with no enrollment reported.
+
+### Step 5: Validation & Report
+
+- Coordinate coverage: how many of the total universe have valid coordinates
 - Cleaning statistics: swaps fixed, invalids rejected, out-of-bounds rejected
+- Enrollment expansion and status counts
 - GASTPE participation summary
 - Write to `output/build_private_report.txt`
 
@@ -102,7 +124,7 @@ Each school receives:
 | `latitude` | Cleaned latitude (null if rejected) |
 | `longitude` | Cleaned longitude (null if rejected) |
 | `coord_status` | `valid`, `fixed_swap`, or `no_coords` |
-| `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission` |
+| `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis` |
 | `region` | Administrative region |
 | `division` | Division |
 | `province` | Province |
@@ -111,6 +133,7 @@ Each school receives:
 | `esc_participating` | ESC program flag (1/0) |
 | `shsvp_participating` | SHS VP flag (1/0) |
 | `jdvp_participating` | JDVP flag (1/0) |
+| `enrollment_status` | `active` (in enrollment data) or `no_enrollment_reported` |
 
 #### Output Files
 
@@ -129,6 +152,7 @@ Each school receives:
 4. **Philippines bounding box [4.5–21.5, 116–127]** — generous bounds covering all Philippine territory including Tawi-Tawi (south) and Batanes (north).
 5. **Location columns from universe, not self-reported** — the LIS master list has standardized admin metadata; the Google Form responses have inconsistent formatting (e.g., "Province of Laguna" vs "Laguna" vs "LAGUNA").
 6. **GASTPE flags preserved** — ESC, SHS VP, and JDVP participation is useful context for downstream policy analysis.
+7. **Enrollment data expands the universe and tags status.** Schools in enrollment but not in LIS are added with null coordinates and `not_in_lis` rejection reason. All schools receive an `enrollment_status` tag so downstream users can distinguish active schools from those with no reported enrollment.
 
 ## Related Documentation
 

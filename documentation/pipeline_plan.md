@@ -6,6 +6,8 @@ Build a durable, reproducible pipeline that consolidates school coordinate data 
 
 Because DepEd school IDs change over time (e.g., when an elementary school begins offering high school and is reclassified), the pipeline also builds a **school ID crosswalk** — a lookup table mapping any known historical school ID to its current canonical ID. All source data is remapped to canonical IDs before the coordinate cascade runs, ensuring that the same physical school is never split across multiple rows due to ID changes.
 
+Additionally, the pipeline expands its school universe using enrollment data, ensuring that schools with reported enrollment but absent from all coordinate sources are still included in the output (flagged as having no coordinates).
+
 **Final output**: one row per canonical school ID with coordinates, lineage, and location context, plus a crosswalk table for historical ID resolution.
 
 ## Sources & Priority Cascade
@@ -33,7 +35,8 @@ project_coordinates/
 │   │   ├── 02. DepEd Data Encoding Monitoring Sheet.xlsx
 │   │   ├── osmapaaralan_overpass_turbo_export.geojson
 │   │   ├── SY 2023-2024 LIST OF SCHOOLS WITH LONGITUDE AND LATITUDE.xlsx
-│   │   └── Geolocation of Public Schools_DepEd.xlsx
+│   │   ├── Geolocation of Public Schools_DepEd.xlsx
+│   │   └── SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv
 │   └── modified/                     # pipeline outputs
 ├── scripts/
 │   └── build_coordinates.py          # orchestrator
@@ -44,6 +47,7 @@ project_coordinates/
 │   ├── load_osmapaaralan.py          # Source B loader
 │   ├── load_nsbi.py                  # Source C loader
 │   ├── load_geolocation.py           # Source D loader
+│   ├── load_enrollment.py            # enrollment-based universe expansion
 │   └── utils.py                      # shared helpers
 ├── notebooks/
 ├── output/                           # build_public_report.txt
@@ -110,6 +114,28 @@ The crosswalk maps any known historical school ID to its current canonical ID (m
 - Union all unique **canonical** `school_id` values across all 4 remapped sources
 - Every school that appears in any source gets a row in the final output, including schools with no coordinates (flagged accordingly)
 
+### Step 2.5: Enrollment-Based Universe Expansion
+
+The four coordinate sources do not capture every operational public school. Some schools have active enrollment but were never included in any geolocation effort. The pipeline expands the universe using enrollment data to ensure completeness.
+
+**Module**: `modules/load_enrollment.py`
+
+**Process**:
+1. Load enrollment CSV(s) listed in the `ENROLLMENT_FILES` configuration at the top of the orchestrator script
+2. Filter to public schools only, deduplicate by school ID
+3. Remap enrollment IDs through the crosswalk (enrollment data may use historical IDs)
+4. Identify enrollment schools not found in the coordinate universe
+5. Add these schools to the universe with null coordinates
+
+**Generalized design**: The enrollment loader accepts any school-level enrollment CSV with a `school_id` and `sector` column. Column name variants are resolved via an alias mapping. New enrollment files can be added by appending to the `ENROLLMENT_FILES` list — no code changes required.
+
+**Current enrollment file**: `SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv` (47,972 public schools; 562 not found in any coordinate source)
+
+These 562 schools receive:
+- `coord_source = None` (no coordinates available)
+- `sources_available = "enrollment_only"`
+- `location_source = "enrollment"` (admin metadata from the enrollment file)
+
 ### Step 3: Apply Priority Cascade
 
 For each `school_id`, select coordinates from the **first available** source in order:
@@ -127,7 +153,8 @@ Record per school:
 ### Step 4: Attach Location Columns
 
 - Pull `region`, `province`, `municipality`, `barangay` from the best available administrative source
-- Location column priority (independent of coordinate priority): NSBI 2023-2024 → Geolocation DepEd → Monitoring Sheet → OSMapaaralan
+- Location column priority (independent of coordinate priority): NSBI 2023-2024 → Geolocation DepEd → Monitoring Sheet → OSMapaaralan → Enrollment
+- For enrollment-only schools (no coordinate source), location columns come from the enrollment file
 - Record `location_source` to track provenance of admin fields
 
 ### Step 5: Validation & Report
@@ -150,12 +177,13 @@ Record per school:
 | `longitude` | Final longitude |
 | `coord_source` | Source that provided coordinates |
 | `monitoring_chosen_source` | Sub-source chosen by validator (if applicable) |
-| `sources_available` | All sources that had coordinates for this school |
+| `sources_available` | All sources that had coordinates for this school; `enrollment_only` if only known from enrollment |
 | `region` | Administrative region |
 | `province` | Province |
 | `municipality` | City or municipality |
 | `barangay` | Barangay |
 | `location_source` | Source that provided admin fields |
+| `enrollment_status` | `active` (in enrollment data) or `no_enrollment_reported` |
 
 #### School ID Crosswalk Schema
 
@@ -187,6 +215,7 @@ Record per school:
 5. **School ID crosswalk is built before the cascade** so that ID changes are resolved before coordinate selection. This prevents the same physical school from appearing as multiple rows.
 6. **Crosswalk uses two layers** with distinct confidence levels: official mapping (authoritative) and spatial+name matching (heuristic). The `match_method` column lets downstream users filter by confidence.
 7. **Canonical ID is always the most recent ID**, reflecting DepEd's current administrative state.
+8. **Enrollment data expands the universe, not the coordinates.** Enrollment files identify schools that exist but have no geolocation data. These are included with null coordinates rather than silently excluded, ensuring the output is a complete roster of known public schools. The enrollment loader is generalized to accept any future enrollment CSV.
 
 ## Related Documentation
 

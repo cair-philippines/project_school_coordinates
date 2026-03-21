@@ -15,8 +15,9 @@ Two separate pipelines address the distinct challenges of each sector:
 1. **Normalizes** four coordinate sources into a common schema
 2. **Resolves historical school ID changes** via a crosswalk built from official mappings and spatial+name deduplication
 3. **Selects coordinates** through a trust-based priority cascade reflecting DepEd's valuation of each source
-4. **Attaches administrative location columns** (region, province, municipality, barangay) from the best available source
-5. **Tracks lineage** so every coordinate can be traced back to its origin
+4. **Expands the school universe** using enrollment data to include schools with active enrollment but no geolocation data
+5. **Attaches administrative location columns** (region, province, municipality, barangay) from the best available source
+6. **Tracks lineage** so every coordinate can be traced back to its origin
 
 ### Private Schools
 
@@ -27,7 +28,7 @@ Two separate pipelines address the distinct challenges of each sector:
 
 ## Data Sources
 
-### Public Schools (4 sources, priority cascade)
+### Public Schools (4 coordinate sources + enrollment expansion)
 
 | Priority | Source | Description | Schools |
 |---|---|---|---|
@@ -35,16 +36,18 @@ Two separate pipelines address the distinct challenges of each sector:
 | 2 | OSMapaaralan (OpenStreetMap) | Human-validated school footprints via OSM mapping | ~44,400 |
 | 3 | SY 2023-2024 List of Schools (NSBI) | Official school infrastructure inventory | ~47,200 |
 | 4 | Geolocation of Public Schools | Internal DepEd office revision | ~47,400 |
+| — | SY 2024-2025 Enrollment Data | Universe expansion (no coordinates, identifies missing schools) | ~48,000 |
 
 ### Private Schools (1 source, coordinate cleaning)
 
 | Source | Description | Schools |
 |---|---|---|
 | Private School Seats and TOSF (Oct 2025) | Self-reported via Google Forms + LIS master list | 12,011 |
+| SY 2024-2025 Enrollment Data | Universe expansion + enrollment status tagging | ~10,000 |
 
 ## Output
 
-### Public Schools — 48,369 schools, 100% coordinate coverage
+### Public Schools — 48,931 schools (48,369 with coordinates, 562 enrollment-only; 1,040 with no enrollment reported)
 
 | File | Description |
 |---|---|
@@ -54,7 +57,7 @@ Two separate pipelines address the distinct challenges of each sector:
 | `data/modified/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
 | `output/build_public_report.txt` | Pipeline run summary and statistics |
 
-### Private Schools — 12,011 schools, 74.2% coordinate coverage
+### Private Schools — 12,168 schools (8,914 with coordinates, 157 enrollment-only; 228 with no enrollment reported)
 
 | File | Description |
 |---|---|
@@ -73,12 +76,13 @@ Two separate pipelines address the distinct challenges of each sector:
 | `longitude` | Final longitude |
 | `coord_source` | Which source provided the coordinates |
 | `monitoring_chosen_source` | Sub-source chosen by validator (if applicable) |
-| `sources_available` | All sources with coordinates for this school |
+| `sources_available` | All sources with coordinates for this school; `enrollment_only` if only known from enrollment |
 | `region` | Administrative region |
 | `province` | Province |
 | `municipality` | City or municipality |
 | `barangay` | Barangay |
 | `location_source` | Which source provided the admin fields |
+| `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
 
 ### School ID Crosswalk Schema
 
@@ -99,7 +103,7 @@ Two separate pipelines address the distinct challenges of each sector:
 | `latitude` | Cleaned latitude (null if rejected) |
 | `longitude` | Cleaned longitude (null if rejected) |
 | `coord_status` | `valid`, `fixed_swap`, or `no_coords` |
-| `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission` |
+| `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis` |
 | `region` | Administrative region |
 | `division` | Division |
 | `province` | Province |
@@ -108,6 +112,7 @@ Two separate pipelines address the distinct challenges of each sector:
 | `esc_participating` | ESC program flag (1/0) |
 | `shsvp_participating` | SHS VP flag (1/0) |
 | `jdvp_participating` | JDVP flag (1/0) |
+| `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
 
 ## Usage
 
@@ -146,6 +151,7 @@ project_coordinates/
 │   ├── load_osmapaaralan.py              # Public: Source B loader
 │   ├── load_nsbi.py                      # Public: Source C loader
 │   ├── load_geolocation.py               # Public: Source D loader
+│   ├── load_enrollment.py                # Public: enrollment-based universe expansion
 │   ├── load_private_tosf.py              # Private: TOSF loader + coordinate cleaning
 │   └── utils.py                          # Shared helpers
 ├── documentation/

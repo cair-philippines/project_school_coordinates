@@ -171,6 +171,49 @@ These 1,454 IDs were old/alternate identifiers for schools that also appeared un
 
 **Cross-source merge**: 1,319 cases where an old ID in OSMapaaralan was remapped to a canonical ID in NSBI. This means these schools now correctly receive both OSMapaaralan coordinates (via the priority cascade) and NSBI administrative metadata (via the location fill).
 
+## 2.5 Enrollment-Based Universe Expansion (`load_enrollment.py`)
+
+The four coordinate sources do not capture every operational public school. Cross-referencing with enrollment data revealed schools that have active enrollment but were never included in any geolocation effort.
+
+### 2.5.1 Source
+
+**File**: `SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv`
+
+School-level enrollment data for SY 2024-2025 (the school year that concluded March 2026). Contains 60,095 rows across public, private, and SUCsLUCs sectors.
+
+### 2.5.2 Loading and Filtering
+
+1. Read the CSV with all columns as string dtype
+2. Resolve column names via an alias mapping (handles variants like `school_id`, `LIS SCHOOL ID`, `beis_school_id`)
+3. Filter to `sector == "Public"` only → 47,972 unique public schools
+4. Deduplicate by `school_id`, keep first occurrence
+5. Extract available location columns: `region`, `division`, `province`, `municipality`, `barangay`
+
+### 2.5.3 Identifying Missing Schools
+
+Enrollment school IDs are remapped through the crosswalk (enrollment may use historical IDs), then compared against the coordinate universe (48,369 canonical IDs from the four coordinate sources).
+
+**Result**: 562 public schools in enrollment but not in the coordinate universe.
+
+These 562 fall into two categories:
+
+| Category | Count | Description |
+|---|---|---|
+| Not in crosswalk at all | 19 | Completely new school IDs — likely schools created for SY 2024-2025 that didn't exist when coordinate data was compiled |
+| In crosswalk but canonical lacks coords | 543 | The School ID Mapping tab knows about these schools (they have a `school_id_2024` entry), but none of the four coordinate sources have data for them under any historical or canonical ID |
+
+The 543 schools in the second category are administratively registered by DepEd (assigned IDs, tracked in the mapping system) but were never captured by any geolocation effort: not mapped in OSM, not in NSBI, not in the internal Geolocation file, and not flagged for monitoring validation. They exist in the enrollment system because they are operational and enrolling students.
+
+### 2.5.4 Verification
+
+- **0** of the 562 overlap with any school that has coordinates in the final output
+- **0** appear in any raw coordinate source under any historical or canonical ID
+- After expansion, every public school in the enrollment file is accounted for — either directly in the coordinates table or resolvable via the crosswalk
+
+### 2.5.5 Generalized Design
+
+The enrollment loader (`load_enrollment.py`) is designed to accept any school-level enrollment CSV, not just the SY 2024-2025 file. New enrollment files are added by appending their path to the `ENROLLMENT_FILES` list at the top of the orchestrator script — no code changes required. The alias mapping handles common column name variations across DepEd enrollment exports.
+
 ## 3. Coordinate Priority Cascade
 
 For each canonical school ID, coordinates are selected from the **first available** source in priority order:
@@ -185,7 +228,18 @@ For each canonical school ID, coordinates are selected from the **first availabl
 **Lineage tracking per school**:
 - `coord_source`: which source provided the final coordinates
 - `monitoring_chosen_source`: if from monitoring, which sub-source the validator chose (OSMapaaralan, NSBI, or New coordinates)
-- `sources_available`: comma-separated list of all sources that had coordinates for this school
+- `sources_available`: comma-separated list of all sources that had coordinates for this school; `enrollment_only` for schools known only from enrollment
+
+### 3.5 Enrollment Status Tagging
+
+After the coordinate cascade and location fill, every school is tagged with `enrollment_status`:
+
+- **`active`** (47,891 schools) — school ID found in the SY 2024-2025 enrollment data (public sector)
+- **`no_enrollment_reported`** (1,040 schools) — school exists in coordinate sources but has no enrollment record in SY 2024-2025
+
+This tag does not affect coordinates or location columns — it is purely informational. A school with `no_enrollment_reported` may have temporarily ceased operations, merged with another school, or simply not yet reported. Its coordinates remain valid.
+
+The enrollment IDs are remapped through the crosswalk before comparison, so historical ID mismatches do not cause false negatives.
 
 ## 4. Location Column Fill
 
@@ -195,9 +249,10 @@ Administrative location columns (`region`, `province`, `municipality`, `barangay
 2. **geolocation_deped** (193 schools)
 3. **monitoring_validated** (0 schools — NSBI already covered them)
 4. **osmapaaralan** (695 schools)
-5. No location data: 358 schools
+5. **enrollment** (562 schools) — fallback for enrollment-only schools
+6. No location data: 358 schools
 
-**Implementation**: For each school, try each source in order. Accept the first source that has at least one non-null location column. Record `location_source` for provenance.
+**Implementation**: For each school, try each source in order. Accept the first source that has at least one non-null location column. Record `location_source` for provenance. For enrollment-only schools (those added in Step 2.5), location columns are filled from the enrollment file after the four coordinate sources have been exhausted. These schools are also tagged with `sources_available = "enrollment_only"` to distinguish them from schools that have coordinate data.
 
 **School name**: Filled separately using the coordinate priority order (monitoring → OSMapaaralan → NSBI → Geolocation). First source with a non-null name wins.
 
@@ -205,7 +260,7 @@ Administrative location columns (`region`, `province`, `municipality`, `barangay
 
 ### 5.1 Coordinate Completeness
 
-All 48,369 schools have coordinates — zero gaps. This is because the union of all four sources covers the full universe.
+Of 48,931 total schools, 48,369 have coordinates (from the four coordinate sources) and 562 do not (enrollment-only schools). The four coordinate sources cover 100% of their own universe; the 562 gaps exist only because the enrollment expansion added schools that no coordinate source has ever captured.
 
 ### 5.2 Cross-Source Discrepancies
 
@@ -225,7 +280,7 @@ The highest discrepancy is between OSMapaaralan and NSBI (3,332 schools), which 
 ## 6. Output Formats
 
 ### 6.1 Parquet Files
-- `public_school_coordinates.parquet` — 48,369 rows, 12 columns
+- `public_school_coordinates.parquet` — 48,931 rows, 12 columns
 - `public_school_id_crosswalk.parquet` — 80,333 rows, 5 columns
 
 ### 6.2 CSV
@@ -258,4 +313,6 @@ Vectorized (numpy) haversine formula. Returns great-circle distance in kilometer
 3. **School ID Mapping coverage**: The official mapping tab has SY data for only 2,389 of 67,610 rows. Most crosswalk entries rely on the `old_school_id` / `BEIS School ID` columns without temporal context.
 4. **Schools that split or merge**: The crosswalk does not handle cases where one school splits into two or two schools merge. These remain as separate entries.
 5. **Duplicate school IDs within a source**: When a source has multiple rows for the same school_id (after remapping), `drop_duplicates(keep="first")` is applied. The "first" row depends on the original row order in the source file.
-6. **358 schools have no location data**: These are schools present only in OSMapaaralan with no matching NSBI/Geolocation/Monitoring entry, and where OSMapaaralan itself lacks address properties.
+6. **358 schools have no location data**: These are schools present only in OSMapaaralan with no matching NSBI/Geolocation/Monitoring/Enrollment entry, and where OSMapaaralan itself lacks address properties.
+7. **562 enrollment-only schools have no coordinates**: These schools are operationally active (have enrollment data) but were never captured by any of the four geolocation sources. Their coordinates remain null until a future geolocation effort covers them.
+8. **SUCsLUCs (180 schools) are excluded**: The enrollment file contains 180 State Universities/Colleges and Local Universities/Colleges, a third sector not covered by either the public or private pipeline. These are not included in any output.
