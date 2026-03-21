@@ -173,3 +173,15 @@ project_coordinates/
 ### Private Schools
 - **[Pipeline Plan](documentation/private_pipeline_plan.md)** — objective, source description, coordinate cleaning strategy, output schema, and design decisions.
 - **[Technical Notes](documentation/private_technical_notes.md)** — comprehensive processing details: ingestion, three-pass coordinate cleaning, merge logic, validation results, and known limitations.
+
+## AI Disclosure
+
+This project was developed with substantial assistance from **Claude** (Anthropic), used as a collaborative coding and technical writing partner throughout the project lifecycle. Specifically, AI was used for:
+
+- **Pipeline design and architecture** — iterating on the priority cascade, crosswalk strategy, and modular structure through conversation
+- **Code implementation** — writing Python modules, orchestrator scripts, and data processing logic
+- **Data exploration and analysis** — inspecting raw datasets, profiling coordinate quality, and diagnosing cross-source discrepancies
+- **Documentation** — drafting pipeline plans, technical notes, and this README
+- **Decision support** — evaluating trade-offs (e.g., crosswalk thresholds, coordinate cleaning pass order, enrollment expansion approach)
+
+All design decisions, domain context (DepEd source valuation, school ID behavior, GASTPE program relevance), and data interpretation were directed by the human author. The AI did not have independent access to external systems or make unsupervised decisions about data handling.
