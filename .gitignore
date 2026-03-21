@@ -11,8 +11,14 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Node (if any)
+# Node
 node_modules/
+
+# Frontend build output (regenerated via npm run build)
+locator/frontend/dist/
+
+# Docker build data copy (created by prepare_deploy.sh)
+locator/data/
 
 # OS
 .DS_Store
