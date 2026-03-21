@@ -1,6 +1,6 @@
-# School Locator
+# Piring — School Locator
 
-Interactive web application for searching and visualizing Philippine public and private school locations. Built on the unified coordinates datasets produced by this project's pipelines.
+Interactive web application for searching and visualizing Philippine public and private school locations. Built on the unified coordinates datasets produced by this project's pipelines. "Piring" means blindfold in Filipino — the app reveals what's hidden in the data.
 
 ## Features
 
@@ -8,7 +8,7 @@ Interactive web application for searching and visualizing Philippine public and 
 - **Cascading location filters** — Region → Province → Municipality → Barangay dropdowns with exact matching; map auto-zooms to the selected area
 - **Summary cards** — when a location filter is active, shows total schools, public/private split, coordinate coverage %, enrollment status, GASTPE participation, and coordinate source breakdown bar
 - **Interactive map** — Leaflet map with CARTO light basemap, PSGC-aware colored markers (green=public validated, blue=private validated, red pulsing=misplaced, gray=unvalidated), context-aware zoom, proportional sector sampling, IQR-based outlier-robust bounds
-- **Table view** — togglable tabular view showing all matching schools including those without coordinates (invisible on the map). Columns: ID, name, sector, municipality, province, region, coord status, PSGC validation, enrollment status. Click a row to locate on the map (or zoom to locality if no coordinates).
+- **Table view** — togglable tabular view showing all matching schools including those without coordinates (invisible on the map). Sortable columns (click header to cycle asc/desc/clear): ID, name, sector, municipality, province, region, coord status, PSGC validation, enrollment status. Click a row to locate on the map (or zoom to locality if no coordinates).
 - **Results sidebar** — scrollable list of all matching schools, showing school name, location, sector, and coordinate status badges
 - **School detail panel** — slide-out panel with full school profile: location hierarchy, coordinate lineage (source, trust level, validator notes), GASTPE flags, enrollment status
 - **Coordinate lineage inspector** — for each school, shows which source provided coordinates, trust level, available sources, and for monitoring-validated schools, which sub-source the validator chose

@@ -1,4 +1,5 @@
-import { MapPin, AlertCircle } from "lucide-react";
+import { useState, useMemo } from "react";
+import { MapPin, AlertCircle, ArrowUp, ArrowDown } from "lucide-react";
 
 function StatusDot({ school }) {
   const hasCoords = school.latitude != null;
@@ -60,7 +61,52 @@ function EnrollmentBadge({ status }) {
   return <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">No enrollment</span>;
 }
 
+// Column definitions for sortable headers
+const COLUMNS = [
+  { key: "status", label: "", align: "center", sortKey: "psgc_validation", width: "w-8" },
+  { key: "school_id", label: "School ID", align: "left", sortKey: "school_id" },
+  { key: "school_name", label: "School Name", align: "left", sortKey: "school_name" },
+  { key: "sector", label: "Sector", align: "left", sortKey: "sector" },
+  { key: "municipality", label: "Municipality", align: "left", sortKey: "municipality" },
+  { key: "province", label: "Province", align: "left", sortKey: "province" },
+  { key: "region", label: "Region", align: "left", sortKey: "region" },
+  { key: "psgc", label: "PSGC", align: "center", sortKey: "psgc_validation" },
+  { key: "enrollment", label: "Enrollment", align: "center", sortKey: "enrollment_status" },
+];
+
+function SortIcon({ direction }) {
+  if (direction === "asc") return <ArrowUp className="h-3 w-3" />;
+  if (direction === "desc") return <ArrowDown className="h-3 w-3" />;
+  return null;
+}
+
+function compareValues(a, b, key) {
+  const valA = a[key] ?? "";
+  const valB = b[key] ?? "";
+  if (valA < valB) return -1;
+  if (valA > valB) return 1;
+  return 0;
+}
+
 export default function SchoolTable({ schools, onSelect, selectedId }) {
+  // Sort state: { key: sortKey, direction: "asc" | "desc" } or null
+  const [sort, setSort] = useState(null);
+
+  const handleSort = (sortKey) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== sortKey) return { key: sortKey, direction: "asc" };
+      if (prev.direction === "asc") return { key: sortKey, direction: "desc" };
+      return null; // third click clears
+    });
+  };
+
+  const sortedSchools = useMemo(() => {
+    if (!sort) return schools;
+    const { key, direction } = sort;
+    const sorted = [...schools].sort((a, b) => compareValues(a, b, key));
+    return direction === "desc" ? sorted.reverse() : sorted;
+  }, [schools, sort]);
+
   if (schools.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-sm text-[var(--muted-foreground)] gap-2">
@@ -76,6 +122,11 @@ export default function SchoolTable({ schools, onSelect, selectedId }) {
       <div className="px-3 py-2 text-xs text-[var(--muted-foreground)] border-b border-[var(--border)] shrink-0 bg-[var(--secondary)]">
         {schools.length.toLocaleString()} school{schools.length !== 1 ? "s" : ""}
         {" "}({schools.filter(s => s.latitude != null).length.toLocaleString()} with coordinates)
+        {sort && (
+          <span className="ml-2 text-[var(--foreground)]">
+            sorted by {COLUMNS.find(c => c.sortKey === sort.key)?.label || sort.key} ({sort.direction})
+          </span>
+        )}
       </div>
 
       {/* Table */}
@@ -83,19 +134,22 @@ export default function SchoolTable({ schools, onSelect, selectedId }) {
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-[var(--card)] z-10">
             <tr className="border-b border-[var(--border)]">
-              <th className="text-left px-3 py-2 font-medium text-[var(--muted-foreground)] w-8"></th>
-              <th className="text-left px-3 py-2 font-medium text-[var(--muted-foreground)]">School ID</th>
-              <th className="text-left px-3 py-2 font-medium text-[var(--muted-foreground)]">School Name</th>
-              <th className="text-left px-3 py-2 font-medium text-[var(--muted-foreground)]">Sector</th>
-              <th className="text-left px-3 py-2 font-medium text-[var(--muted-foreground)]">Municipality</th>
-              <th className="text-left px-3 py-2 font-medium text-[var(--muted-foreground)]">Province</th>
-              <th className="text-left px-3 py-2 font-medium text-[var(--muted-foreground)]">Region</th>
-              <th className="text-center px-3 py-2 font-medium text-[var(--muted-foreground)]">PSGC</th>
-              <th className="text-center px-3 py-2 font-medium text-[var(--muted-foreground)]">Enrollment</th>
+              {COLUMNS.map((col) => (
+                <th
+                  key={col.key}
+                  onClick={() => handleSort(col.sortKey)}
+                  className={`${col.align === "center" ? "text-center" : "text-left"} px-3 py-2 font-medium text-[var(--muted-foreground)] cursor-pointer hover:text-[var(--foreground)] select-none transition-colors ${col.width || ""}`}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {col.label}
+                    {sort?.key === col.sortKey && <SortIcon direction={sort.direction} />}
+                  </span>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {schools.map((school) => (
+            {sortedSchools.map((school) => (
               <tr
                 key={school.school_id}
                 onClick={() => onSelect(school)}
