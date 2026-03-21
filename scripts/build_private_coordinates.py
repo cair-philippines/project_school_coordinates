@@ -275,33 +275,95 @@ def write_output(result):
     xlsx_path = OUTPUT_DATA_DIR / "private_school_coordinates.xlsx"
 
     with_coords = out["coord_status"].isin(["valid", "fixed_swap"]).sum()
+    psgc_match = (out["psgc_validation"] == "psgc_match").sum()
+    psgc_mismatch = (out["psgc_validation"] == "psgc_mismatch").sum()
+    psgc_no_val = (out["psgc_validation"] == "psgc_no_validation").sum()
+    active = (out["enrollment_status"] == "active").sum()
+    no_enroll = (out["enrollment_status"] == "no_enrollment_reported").sum()
 
     metadata = pd.DataFrame([
+        # --- Overview ---
         {"field": "Pipeline", "value": "Private School Coordinates"},
         {"field": "Generated", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
         {"field": "Source File", "value": "Private School Seats and TOSF ao 2025Oct27.xlsx"},
-        {"field": "Total Schools", "value": str(len(out))},
-        {"field": "With Coordinates", "value": str(with_coords)},
-        {"field": "Without Coordinates", "value": str(len(out) - with_coords)},
+        {"field": "Total Schools", "value": f"{len(out):,}"},
+        {"field": "With Coordinates", "value": f"{with_coords:,}"},
+        {"field": "Without Coordinates", "value": f"{len(out) - with_coords:,}"},
         {"field": "", "value": ""},
-        {"field": "Data Source", "value": ""},
-        {"field": "  Universe", "value": "SCHOOLS WITHOUT SUBMISSION sheet — LIS master list (Sep 2025)"},
-        {"field": "  Coordinates", "value": "RAW DATA sheet — self-reported via Google Forms (Oct 2025)"},
-        {"field": "  Enrollment expansion", "value": "SY 2024-2025 enrollment data — adds schools not in LIS"},
+
+        # --- Column Dictionary ---
+        {"field": "COLUMN DICTIONARY", "value": ""},
+        {"field": "school_id", "value": "Validated BEIS School ID (corrected by DepEd where applicable)"},
+        {"field": "school_name", "value": "Official LIS school name"},
+        {"field": "latitude", "value": "Cleaned latitude (WGS84). Null if coordinates were rejected or not submitted."},
+        {"field": "longitude", "value": "Cleaned longitude (WGS84). Null if coordinates were rejected or not submitted."},
+        {"field": "coord_status", "value": "Coordinate quality status (see Coordinate Status below)"},
+        {"field": "coord_rejection_reason", "value": "If coord_status=no_coords: why coordinates are missing (see Rejection Reasons below)"},
+        {"field": "region", "value": "DepEd administrative region (from LIS master list)"},
+        {"field": "division", "value": "DepEd division (from LIS master list)"},
+        {"field": "province", "value": "Province (from LIS master list)"},
+        {"field": "municipality", "value": "City or municipality (from LIS master list)"},
+        {"field": "barangay", "value": "Barangay (from LIS master list)"},
+        {"field": "esc_participating", "value": "Education Service Contracting program participation (1=yes, 0=no or not submitted)"},
+        {"field": "shsvp_participating", "value": "Senior High School Voucher Program participation (1=yes, 0=no or not submitted)"},
+        {"field": "jdvp_participating", "value": "Joint Delivery Voucher Program participation (1=yes, 0=no or not submitted)"},
+        {"field": "enrollment_status", "value": "Whether the school reported enrollment in SY 2024-2025 (see Enrollment Status below)"},
+        {"field": "psgc_region", "value": "10-digit PSA Philippine Standard Geographic Code for region"},
+        {"field": "psgc_region_name", "value": "PSA official region name"},
+        {"field": "psgc_province", "value": "10-digit PSGC for province"},
+        {"field": "psgc_province_name", "value": "PSA official province name"},
+        {"field": "psgc_municity", "value": "10-digit PSGC for municipality/city"},
+        {"field": "psgc_municity_name", "value": "PSA official municipality/city name"},
+        {"field": "psgc_barangay", "value": "10-digit PSGC for barangay (CLAIMED — from school-to-PSGC crosswalk, Q4 2024)"},
+        {"field": "psgc_barangay_name", "value": "PSA official barangay name (claimed)"},
+        {"field": "psgc_observed_barangay", "value": "10-digit PSGC for barangay (OBSERVED — from point-in-polygon against Q4 2025 shapefile). Which barangay the school's coordinates actually fall in."},
+        {"field": "psgc_validation", "value": "Result of comparing claimed vs observed barangay (see PSGC Validation below)"},
+        {"field": "urban_rural", "value": "Urban or Rural classification based on 2020 Census of Population and Housing"},
+        {"field": "income_class", "value": "Municipal income classification (1st through 5th class) based on DOF D.O. 74, S. 2024"},
         {"field": "", "value": ""},
-        {"field": "Coordinate Cleaning", "value": ""},
+
+        # --- Data Sources ---
+        {"field": "DATA SOURCES", "value": ""},
+        {"field": "  Universe", "value": "SCHOOLS WITHOUT SUBMISSION sheet — LIS master list (Sep 2025, 12,011 schools)"},
+        {"field": "  Coordinates", "value": "RAW DATA sheet — self-reported via Google Forms (Oct 2025, 9,632 submissions)"},
+        {"field": "  Enrollment expansion", "value": "SY 2024-2025 enrollment data — adds private schools not in LIS"},
+        {"field": "", "value": ""},
+
+        # --- Coordinate Status ---
+        {"field": "COORDINATE STATUS (coord_status values)", "value": ""},
+        {"field": "  valid", "value": "Coordinates passed all cleaning checks. Self-reported — accuracy not guaranteed."},
+        {"field": "  fixed_swap", "value": "Latitude and longitude were swapped in the submission and auto-corrected."},
+        {"field": "  no_coords", "value": "No usable coordinates. See coord_rejection_reason for why."},
+        {"field": "", "value": ""},
+
+        # --- Rejection Reasons ---
+        {"field": "REJECTION REASONS (coord_rejection_reason values)", "value": ""},
+        {"field": "  no_submission", "value": "School exists in LIS but did not submit the TOSF Google Form."},
+        {"field": "  invalid", "value": "Submitted coordinates were non-numeric, non-finite, >90/>180, or zero."},
+        {"field": "  out_of_bounds", "value": "Submitted coordinates fell outside Philippines bounding box [4.5-21.5, 116-127]."},
+        {"field": "  not_in_lis", "value": "School found in enrollment data but not in the LIS master list. No TOSF submission possible."},
+        {"field": "", "value": ""},
+
+        # --- Coordinate Cleaning ---
+        {"field": "COORDINATE CLEANING (applied in order)", "value": ""},
         {"field": "  Pass 1", "value": "Fix swapped lat/lon (lon in PH lat range AND lat in PH lon range)"},
         {"field": "  Pass 2", "value": "Reject invalid (null, non-finite, abs>90/180, zero)"},
         {"field": "  Pass 3", "value": "Reject out-of-PH bounds (lat not in [4.5, 21.5], lon not in [116, 127])"},
         {"field": "", "value": ""},
-        {"field": "Enrollment Status", "value": ""},
-        {"field": "  active", "value": "School has reported enrollment in SY 2024-2025"},
-        {"field": "  no_enrollment_reported", "value": "School in LIS/TOSF but no enrollment in SY 2024-2025"},
+
+        # --- Enrollment Status ---
+        {"field": "ENROLLMENT STATUS (enrollment_status values)", "value": ""},
+        {"field": f"  active ({active:,} schools)", "value": "School has reported enrollment in SY 2024-2025."},
+        {"field": f"  no_enrollment_reported ({no_enroll:,} schools)", "value": "School in LIS/TOSF but no enrollment in SY 2024-2025. May have ceased operations or not yet reported."},
         {"field": "", "value": ""},
-        {"field": "GASTPE Flags", "value": ""},
-        {"field": "  esc_participating", "value": "Education Service Contracting program (1=yes, 0=no)"},
-        {"field": "  shsvp_participating", "value": "Senior High School Voucher Program (1=yes, 0=no)"},
-        {"field": "  jdvp_participating", "value": "Joint Delivery Voucher Program (1=yes, 0=no)"},
+
+        # --- PSGC Validation ---
+        {"field": "PSGC VALIDATION (psgc_validation values)", "value": ""},
+        {"field": f"  psgc_match ({psgc_match:,} schools)", "value": "Coordinates fall within the claimed PSGC barangay polygon. Coordinates and admin assignment are consistent."},
+        {"field": f"  psgc_mismatch ({psgc_mismatch:,} schools)", "value": "Coordinates fall in a DIFFERENT barangay than claimed. Higher rate for private schools due to self-reported coordinates."},
+        {"field": f"  psgc_no_validation ({psgc_no_val:,} schools)", "value": "Cannot validate. School has no coordinates, no PSGC code, or coordinates fall outside all barangay polygons."},
+        {"field": "", "value": ""},
+        {"field": "PSGC NOTE", "value": "Claimed PSGC codes are from Q4 2024. Observed codes are from Q4 2025 shapefile. Some mismatches may be due to PSGC changes between quarters rather than coordinate errors."},
     ])
 
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:

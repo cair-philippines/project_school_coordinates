@@ -462,29 +462,92 @@ def write_output(result, crosswalk, report_text):
     # --- Excel workbook (3 sheets) ---
     xlsx_path = OUTPUT_DATA_DIR / "public_school_coordinates.xlsx"
 
+    # --- Compute summary stats for metadata ---
+    psgc_match = (coords_df["psgc_validation"] == "psgc_match").sum()
+    psgc_mismatch = (coords_df["psgc_validation"] == "psgc_mismatch").sum()
+    psgc_no_val = (coords_df["psgc_validation"] == "psgc_no_validation").sum()
+    active = (coords_df["enrollment_status"] == "active").sum()
+    no_enroll = (coords_df["enrollment_status"] == "no_enrollment_reported").sum()
+
     metadata = pd.DataFrame([
-        {"field": "Pipeline", "value": "Public School Coordinates"},
+        # --- Overview ---
+        {"field": "Pipeline", "value": "Unified Public School Coordinates"},
         {"field": "Generated", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-        {"field": "Total Schools", "value": str(len(coords_df))},
-        {"field": "With Coordinates", "value": str(coords_df["coord_source"].notna().sum())},
-        {"field": "Without Coordinates", "value": str(coords_df["coord_source"].isna().sum())},
-        {"field": "Crosswalk Entries", "value": str(len(crosswalk_df))},
+        {"field": "Total Schools", "value": f"{len(coords_df):,}"},
+        {"field": "With Coordinates", "value": f"{coords_df['coord_source'].notna().sum():,}"},
+        {"field": "Without Coordinates", "value": f"{coords_df['coord_source'].isna().sum():,}"},
+        {"field": "Crosswalk Entries", "value": f"{len(crosswalk_df):,}"},
         {"field": "", "value": ""},
-        {"field": "Source Priority (Coordinates)", "value": ""},
-        {"field": "  1 (highest)", "value": "monitoring_validated — University-validated coordinates"},
-        {"field": "  2", "value": "osmapaaralan — OSM human-validated school footprints"},
-        {"field": "  3", "value": "nsbi_2324 — Official NSBI school list (SY 2023-2024)"},
-        {"field": "  4 (lowest)", "value": "geolocation_deped — Internal DepEd office revision"},
+
+        # --- Column Dictionary ---
+        {"field": "COLUMN DICTIONARY", "value": ""},
+        {"field": "school_id", "value": "Canonical (most recent) DepEd LIS School ID"},
+        {"field": "school_name", "value": "Best available school name from highest-priority source"},
+        {"field": "latitude", "value": "Final latitude (WGS84). Null if no coordinate source has data."},
+        {"field": "longitude", "value": "Final longitude (WGS84). Null if no coordinate source has data."},
+        {"field": "coord_source", "value": "Which source provided the coordinates (see Coordinate Sources below)"},
+        {"field": "monitoring_chosen_source", "value": "If coord_source=monitoring_validated: which sub-source the validator chose (OSMapaaralan, NSBI, or New coordinates). Null otherwise."},
+        {"field": "sources_available", "value": "Comma-separated list of all sources that had coordinates for this school. 'enrollment_only' if school is only known from enrollment data."},
+        {"field": "region", "value": "DepEd administrative region (from best available source)"},
+        {"field": "province", "value": "Province (from best available source)"},
+        {"field": "municipality", "value": "City or municipality (from best available source)"},
+        {"field": "barangay", "value": "Barangay (from best available source)"},
+        {"field": "location_source", "value": "Which source provided the admin location fields (see Location Sources below)"},
+        {"field": "enrollment_status", "value": "Whether the school reported enrollment in SY 2024-2025 (see Enrollment Status below)"},
+        {"field": "psgc_region", "value": "10-digit PSA Philippine Standard Geographic Code for region"},
+        {"field": "psgc_region_name", "value": "PSA official region name (e.g., 'Region I (Ilocos Region)')"},
+        {"field": "psgc_province", "value": "10-digit PSGC for province"},
+        {"field": "psgc_province_name", "value": "PSA official province name"},
+        {"field": "psgc_municity", "value": "10-digit PSGC for municipality/city"},
+        {"field": "psgc_municity_name", "value": "PSA official municipality/city name"},
+        {"field": "psgc_barangay", "value": "10-digit PSGC for barangay (CLAIMED — from school-to-PSGC crosswalk, Q4 2024)"},
+        {"field": "psgc_barangay_name", "value": "PSA official barangay name (claimed)"},
+        {"field": "psgc_observed_barangay", "value": "10-digit PSGC for barangay (OBSERVED — from point-in-polygon against Q4 2025 shapefile). Which barangay the school's coordinates actually fall in."},
+        {"field": "psgc_validation", "value": "Result of comparing claimed vs observed barangay (see PSGC Validation below)"},
+        {"field": "urban_rural", "value": "Urban or Rural classification based on 2020 Census of Population and Housing"},
+        {"field": "income_class", "value": "Municipal income classification (1st through 5th class) based on DOF D.O. 74, S. 2024"},
         {"field": "", "value": ""},
-        {"field": "Source Priority (Location Columns)", "value": ""},
-        {"field": "  1 (highest)", "value": "nsbi_2324"},
-        {"field": "  2", "value": "geolocation_deped"},
-        {"field": "  3", "value": "monitoring_validated"},
-        {"field": "  4 (lowest)", "value": "osmapaaralan"},
+
+        # --- Coordinate Sources ---
+        {"field": "COORDINATE SOURCES (coord_source values)", "value": ""},
+        {"field": "  monitoring_validated", "value": "Priority 1. University-validated coordinates for schools flagged for coordinate mismatches."},
+        {"field": "  osmapaaralan", "value": "Priority 2. Human-validated school footprints from OpenStreetMap (centroids of polygons)."},
+        {"field": "  nsbi_2324", "value": "Priority 3. Official NSBI school list (SY 2023-2024). Dated but official."},
+        {"field": "  geolocation_deped", "value": "Priority 4. Internal DepEd office revision of coordinates."},
+        {"field": "  drrms_imrs", "value": "Priority 5. Self-reported via disaster incident reports (DRRMS IMRS 2025)."},
+        {"field": "  (null)", "value": "No coordinate source has data for this school (enrollment-only)."},
         {"field": "", "value": ""},
-        {"field": "Crosswalk Match Methods", "value": ""},
-        {"field": "  official_mapping", "value": "From School ID Mapping tab (authoritative)"},
-        {"field": "  spatial_name", "value": "Spatial proximity (<100m) + name similarity (>=0.6)"},
+
+        # --- Location Sources ---
+        {"field": "LOCATION SOURCES (location_source values)", "value": ""},
+        {"field": "  nsbi_2324", "value": "Priority 1. Most complete admin metadata."},
+        {"field": "  geolocation_deped", "value": "Priority 2."},
+        {"field": "  monitoring_validated", "value": "Priority 3."},
+        {"field": "  osmapaaralan", "value": "Priority 4."},
+        {"field": "  drrms_imrs", "value": "Priority 5."},
+        {"field": "  enrollment", "value": "Fallback for enrollment-only schools."},
+        {"field": "  (null)", "value": "No source has admin location data for this school."},
+        {"field": "", "value": ""},
+
+        # --- Enrollment Status ---
+        {"field": "ENROLLMENT STATUS (enrollment_status values)", "value": ""},
+        {"field": f"  active ({active:,} schools)", "value": "School has reported enrollment in SY 2024-2025."},
+        {"field": f"  no_enrollment_reported ({no_enroll:,} schools)", "value": "School exists in coordinate sources but has no enrollment record. May have ceased operations, merged, or not yet reported."},
+        {"field": "", "value": ""},
+
+        # --- PSGC Validation ---
+        {"field": "PSGC VALIDATION (psgc_validation values)", "value": ""},
+        {"field": f"  psgc_match ({psgc_match:,} schools)", "value": "Coordinates fall within the claimed PSGC barangay polygon. Coordinates and admin assignment are consistent."},
+        {"field": f"  psgc_mismatch ({psgc_mismatch:,} schools)", "value": "Coordinates fall in a DIFFERENT barangay than claimed. Possible causes: wrong coordinates, wrong admin assignment, or school near a barangay boundary."},
+        {"field": f"  psgc_no_validation ({psgc_no_val:,} schools)", "value": "Cannot validate. School has no coordinates, no PSGC code, or coordinates fall outside all barangay polygons."},
+        {"field": "", "value": ""},
+        {"field": "PSGC NOTE", "value": "Claimed PSGC codes are from Q4 2024. Observed codes are from Q4 2025 shapefile. Some mismatches may be due to PSGC changes between quarters (barangay merges, splits, renames) rather than coordinate errors."},
+        {"field": "", "value": ""},
+
+        # --- Crosswalk ---
+        {"field": "CROSSWALK MATCH METHODS (School ID Crosswalk sheet)", "value": ""},
+        {"field": "  official_mapping", "value": "From DepEd's School ID Mapping tab. Authoritative."},
+        {"field": "  spatial_name", "value": "Matched by spatial proximity (<100m) + name similarity (>=0.6). Heuristic."},
     ])
 
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
