@@ -26,5 +26,6 @@ COPY data/ ./data/
 # Expose port (Cloud Run uses PORT env var)
 EXPOSE 8080
 
-# Start uvicorn — Cloud Run sets PORT=8080
-CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run from the backend directory so local imports (data_loader) resolve
+WORKDIR /app/backend
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
