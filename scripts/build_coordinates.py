@@ -21,7 +21,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 import numpy as np
-from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan
+from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan, load_drrms
 from modules import build_crosswalk, load_enrollment
 from modules.utils import (
     COORD_PRIORITY,
@@ -42,6 +42,31 @@ ENROLLMENT_FILES = [
 # ---------------------------------------------------------------------------
 # Step 1: Load all sources
 # ---------------------------------------------------------------------------
+def _load_known_private_ids():
+    """Collect school IDs known to be private schools.
+
+    Uses the TOSF file (LIS master list of private schools) and the
+    enrollment file (private sector). These IDs should not appear in
+    the public school output.
+    """
+    private_ids = set()
+
+    # From TOSF universe (LIS master list of private schools)
+    tosf_path = PROJECT_ROOT / "data" / "raw" / "Private School Seats and TOSF ao 2025Oct27.xlsx"
+    if tosf_path.exists():
+        from modules import load_private_tosf
+        universe = load_private_tosf.load_universe(str(PROJECT_ROOT))
+        private_ids.update(universe["school_id"].dropna())
+
+    # From enrollment file (private sector)
+    for filepath in ENROLLMENT_FILES:
+        if filepath.exists():
+            enroll = load_enrollment.load(str(filepath), sector="private")
+            private_ids.update(enroll["school_id"].dropna())
+
+    return private_ids
+
+
 def load_all_sources():
     """Load and return a dict of source label -> DataFrame."""
     print("Loading sources...")
@@ -51,9 +76,11 @@ def load_all_sources():
         "osmapaaralan": load_osmapaaralan.load(root),
         "nsbi_2324": load_nsbi.load(root),
         "geolocation_deped": load_geolocation.load(root),
+        "drrms_imrs": load_drrms.load(root),
     }
     for label, df in sources.items():
         print(f"  {label}: {len(df):,} rows")
+
     return sources
 
 
@@ -72,6 +99,23 @@ def build_and_apply_crosswalk(sources):
         remapped_sources[label] = remapped
         if count > 0:
             print(f"  {label}: {count:,} IDs remapped")
+
+    # Remove known private school IDs AFTER crosswalk remapping
+    # (OSMapaaralan contains both public and private footprints, and some
+    # private schools use old IDs that only resolve to private after remapping)
+    private_ids = _load_known_private_ids()
+    if private_ids:
+        total_removed = 0
+        for label, df in remapped_sources.items():
+            before = len(df)
+            remapped_sources[label] = df[~df["school_id"].isin(private_ids)].reset_index(drop=True)
+            removed = before - len(remapped_sources[label])
+            total_removed += removed
+            if removed > 0:
+                print(f"  {label}: {removed:,} private IDs excluded")
+        if total_removed > 0:
+            print(f"  Total: {total_removed:,} private school records removed from public sources")
+
     return remapped_sources, crosswalk
 
 

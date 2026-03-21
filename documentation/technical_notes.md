@@ -100,6 +100,32 @@ Comprehensive record of all processing and transformation decisions applied to t
 
 **Row count**: 47,382
 
+### 1.5 Source E — DRRMS IMRS 2025 (`load_drrms.py`)
+
+**Raw file**: `DRRMS IMRS data 2025.csv`
+
+**Structure**: 27,172 rows, 85 columns. Each row is a disaster/emergency incident report filed by a school official through DepEd's Disaster Risk Reduction Management Service Incident Management Reporting System. This is not a school list — it's a disaster reporting dataset that incidentally contains school coordinates. Schools with multiple disaster reports appear as multiple rows.
+
+**Transformations**:
+1. Read CSV with all columns as string dtype
+2. Rename columns: `deped school id number` → `school_id`, `name of school or deped facility` → `school_name`, `municipality/city` → `municipality`, `sdo` → `division`
+3. Normalize `school_id`, drop rows with null school_id
+4. Deduplicate by `school_id`, keeping first occurrence (earliest disaster report)
+5. Parse lat/lon to numeric, drop invalid coordinates
+6. Normalize region names from DRRMS long format to short format via a mapping (e.g., "REGION V (BICOL REGION)" → "Region V", "CORDILLERA ADMINISTRATIVE REGION (CAR)" → "CAR")
+7. Normalize province/municipality/barangay to title case
+8. Tag with `source = "drrms_imrs"`
+
+**Region name mapping**: DRRMS uses verbose region names with parenthetical suffixes. A static mapping converts all 18 known variants to the short format used by other sources. Unknown region names are kept as-is (stripped).
+
+**Output columns**: `school_id, school_name, latitude, longitude, region, division, province, municipality, barangay, source`
+
+**Row count**: 16,131 unique schools with coordinates (from 27,172 disaster reports across 16,851 unique school IDs)
+
+**Coordinate quality**: 100% of coordinates fall within the Philippines bounding box — no outliers, no swapped lat/lon. This is notably cleaner than the private school TOSF data (8.7% invalid). Likely because disaster reporters reference their school's known location rather than estimating.
+
+**Sector**: All non-null rows are `sector = PUBLIC`. The 1,111 rows with null sector are also public schools based on their IDs. No private school filtering needed.
+
 ## 2. School ID Crosswalk (`build_crosswalk.py`)
 
 DepEd school IDs change over time — most commonly when a school's curricular offering classification changes (e.g., an elementary school begins offering high school and becomes an "integrated school" with a new ID). The crosswalk resolves these changes so that the same physical school is not split across multiple rows.
@@ -161,6 +187,24 @@ After the crosswalk is built, all four source DataFrames have their `school_id` 
 | NSBI 2023-2024 | 273 | Fewer — most current official list |
 | Monitoring | 84 | Smallest — validated schools already flagged by current IDs |
 
+### 2.4 Private School Exclusion from Public Sources
+
+OSMapaaralan's GeoJSON contains school footprints for **both public and private** schools — there is no reliable sector field in the OSM data to distinguish them during loading. Without filtering, 530+ private schools would appear in the public output as duplicate rows (once from OSMapaaralan in the public pipeline, once from the TOSF file in the private pipeline).
+
+**Detection**: Cross-referencing the public and private outputs revealed 530 school IDs appearing in both. 529 of these had `coord_source = osmapaaralan` and `enrollment_status = no_enrollment_reported` (because the enrollment file correctly lists them as private sector). Their names were clearly private schools (e.g., "Sacred Heart School", "St. Mary's Academy").
+
+**Solution**: After crosswalk remapping (Step 1.5), the pipeline collects all known private school IDs from two sources:
+1. The TOSF LIS universe (the `SCHOOLS WITHOUT SUBMISSION` sheet — 12,011 private school IDs)
+2. The enrollment file filtered to `sector = "Private"` (catches private schools not in the TOSF universe)
+
+Any school ID in this combined private set is removed from all four public source DataFrames.
+
+**Why exclusion runs after remapping, not before**: Some OSMapaaralan entries use old school IDs (e.g., `346004`) that only resolve to a known private school ID (e.g., `407461`) after crosswalk remapping. Excluding before remapping would miss these cases.
+
+**Result**: 538 private school records removed (535 from OSMapaaralan, 1 each from monitoring, NSBI, and geolocation).
+
+**Remaining overlap**: 1 school ID (`400233`) appears in both outputs. This is a genuine DepEd ID collision — "Sungay IS" (public, active) and "St. Thomas Aquinas Learning Center of Vigan City, Inc." (private, active) are different schools that share the same numeric ID across sectors. This is not a pipeline error and is retained as-is.
+
 ### 2.4 Impact on School Universe
 
 Before crosswalk: **49,823** unique school IDs across all sources.
@@ -218,10 +262,11 @@ The enrollment loader (`load_enrollment.py`) is designed to accept any school-le
 
 For each canonical school ID, coordinates are selected from the **first available** source in priority order:
 
-1. **monitoring_validated** (7,723 schools) — university-validated, highest trust
-2. **osmapaaralan** (38,360 schools) — OSM human-validated
+1. **monitoring_validated** (7,722 schools) — university-validated, highest trust
+2. **osmapaaralan** (37,831 schools) — OSM human-validated
 3. **nsbi_2324** (2,183 schools) — official but dated
-4. **geolocation_deped** (103 schools) — lowest priority, only source for these
+4. **geolocation_deped** (103 schools) — internal office revision
+5. **drrms_imrs** (25 schools) — self-reported via disaster incident reports; only source for these schools
 
 **Implementation**: Sources are indexed by `school_id` (deduplicated, first occurrence kept). The cascade iterates in priority order; schools that already have coordinates from a higher-priority source are skipped.
 
@@ -245,12 +290,13 @@ The enrollment IDs are remapped through the crosswalk before comparison, so hist
 
 Administrative location columns (`region`, `province`, `municipality`, `barangay`) are filled independently from coordinates, using a separate priority:
 
-1. **nsbi_2324** (47,123 schools) — most complete admin metadata
+1. **nsbi_2324** (47,122 schools) — most complete admin metadata
 2. **geolocation_deped** (193 schools)
 3. **monitoring_validated** (0 schools — NSBI already covered them)
-4. **osmapaaralan** (695 schools)
-5. **enrollment** (562 schools) — fallback for enrollment-only schools
-6. No location data: 358 schools
+4. **osmapaaralan** (429 schools)
+5. **drrms_imrs** (25 schools) — for schools only in DRRMS
+6. **enrollment** (562 schools) — fallback for enrollment-only schools
+7. No location data: 95 schools
 
 **Implementation**: For each school, try each source in order. Accept the first source that has at least one non-null location column. Record `location_source` for provenance. For enrollment-only schools (those added in Step 2.5), location columns are filled from the enrollment file after the four coordinate sources have been exhausted. These schools are also tagged with `sources_available = "enrollment_only"` to distinguish them from schools that have coordinate data.
 
@@ -260,7 +306,7 @@ Administrative location columns (`region`, `province`, `municipality`, `barangay
 
 ### 5.1 Coordinate Completeness
 
-Of 48,931 total schools, 48,369 have coordinates (from the four coordinate sources) and 562 do not (enrollment-only schools). The four coordinate sources cover 100% of their own universe; the 562 gaps exist only because the enrollment expansion added schools that no coordinate source has ever captured.
+Of 48,426 total schools, 47,864 have coordinates (from the five coordinate sources) and 562 do not (enrollment-only schools). The five coordinate sources cover 100% of their own universe; the 562 gaps exist only because the enrollment expansion added schools that no coordinate source has ever captured.
 
 ### 5.2 Cross-Source Discrepancies
 
@@ -280,8 +326,8 @@ The highest discrepancy is between OSMapaaralan and NSBI (3,332 schools), which 
 ## 6. Output Formats
 
 ### 6.1 Parquet Files
-- `public_school_coordinates.parquet` — 48,931 rows, 12 columns
-- `public_school_id_crosswalk.parquet` — 80,333 rows, 5 columns
+- `public_school_coordinates.parquet` — 48,426 rows, 13 columns
+- `public_school_id_crosswalk.parquet` — 80,385 rows, 5 columns
 
 ### 6.2 CSV
 - `public_school_coordinates.csv` — same content as parquet, for universal access
@@ -314,5 +360,6 @@ Vectorized (numpy) haversine formula. Returns great-circle distance in kilometer
 4. **Schools that split or merge**: The crosswalk does not handle cases where one school splits into two or two schools merge. These remain as separate entries.
 5. **Duplicate school IDs within a source**: When a source has multiple rows for the same school_id (after remapping), `drop_duplicates(keep="first")` is applied. The "first" row depends on the original row order in the source file.
 6. **358 schools have no location data**: These are schools present only in OSMapaaralan with no matching NSBI/Geolocation/Monitoring/Enrollment entry, and where OSMapaaralan itself lacks address properties.
-7. **562 enrollment-only schools have no coordinates**: These schools are operationally active (have enrollment data) but were never captured by any of the four geolocation sources. Their coordinates remain null until a future geolocation effort covers them.
+7. **563 enrollment-only schools have no coordinates**: These schools are operationally active (have enrollment data) but were never captured by any of the four geolocation sources. Their coordinates remain null until a future geolocation effort covers them.
 8. **SUCsLUCs (180 schools) are excluded**: The enrollment file contains 180 State Universities/Colleges and Local Universities/Colleges, a third sector not covered by either the public or private pipeline. These are not included in any output.
+9. **1 cross-sector ID collision**: School ID `400233` is assigned to both a public school ("Sungay IS") and a private school ("St. Thomas Aquinas Learning Center of Vigan City, Inc."). Both are retained in their respective outputs. This is a DepEd administrative artifact, not a pipeline error.

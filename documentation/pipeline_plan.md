@@ -17,7 +17,8 @@ Additionally, the pipeline expands its school universe using enrollment data, en
 | 1 | Monitoring Sheet (sheets 1–5) | `monitoring_validated` | ~8,570 schools validated by university team; highest trust |
 | 2 | OSMapaaralan GeoJSON | `osmapaaralan` | ~44K features; human-validated via OSM mapping process |
 | 3 | SY 2023-2024 List of Schools | `nsbi_2324` | ~47K schools; official but dated NSBI system |
-| 4 | Geolocation of Public Schools ("Geolocations" tab) | `geolocation_deped` | ~47K schools; internal office revision, lowest priority |
+| 4 | Geolocation of Public Schools ("Geolocations" tab) | `geolocation_deped` | ~47K schools; internal office revision |
+| 5 | DRRMS IMRS 2025 | `drrms_imrs` | ~16K schools; self-reported via disaster incident reports |
 
 ### Source Context
 
@@ -25,6 +26,7 @@ Additionally, the pipeline expands its school universe using enrollment data, en
 - **OSMapaaralan**: School footprints mapped in OpenStreetMap through a rigorous community mapping process. The `ref` property holds DepEd school IDs. Geometry is mostly polygons (centroids extracted for lat/lon).
 - **SY 2023-2024 List of Schools**: Generated from DepEd's official National School Building Inventory (NSBI) system. Contains the broadest administrative metadata (region, division, province, municipality, barangay).
 - **Geolocation of Public Schools**: A file maintained by an internal DepEd office that may contain revised/updated coordinates from the NSBI system, but is considered less authoritative than the other sources. Also contains the **School ID Mapping** tab used to build the crosswalk.
+- **DRRMS IMRS 2025**: Coordinates collected via DepEd's Disaster Risk Reduction Management Service Incident Management Reporting System. Each row is a disaster report filed by a school official — schools may have multiple reports. Self-reported and unvalidated, but 100% of coordinates fall within PH bounds. Deduplicated to one row per school.
 
 ## Project Structure
 
@@ -36,6 +38,7 @@ project_coordinates/
 │   │   ├── osmapaaralan_overpass_turbo_export.geojson
 │   │   ├── SY 2023-2024 LIST OF SCHOOLS WITH LONGITUDE AND LATITUDE.xlsx
 │   │   ├── Geolocation of Public Schools_DepEd.xlsx
+│   │   ├── DRRMS IMRS data 2025.csv
 │   │   └── SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv
 │   └── modified/                     # pipeline outputs
 ├── scripts/
@@ -47,6 +50,7 @@ project_coordinates/
 │   ├── load_osmapaaralan.py          # Source B loader
 │   ├── load_nsbi.py                  # Source C loader
 │   ├── load_geolocation.py           # Source D loader
+│   ├── load_drrms.py                 # Source E loader (DRRMS IMRS)
 │   ├── load_enrollment.py            # enrollment-based universe expansion
 │   └── utils.py                      # shared helpers
 ├── notebooks/
@@ -90,6 +94,14 @@ Each `modules/load_*.py` handles ingestion and normalization for its source and 
 - Normalize to: `school_id`, `latitude`, `longitude`, `region`, `division`, `province`, `municipality`, `barangay`, `school_name`
 - Drop rows with null coordinates
 
+**Source E — DRRMS IMRS 2025** (`modules/load_drrms.py`)
+- Load CSV; each row is a disaster report, not a school
+- Normalize column names (`deped school id number` → `school_id`, `municipality/city` → `municipality`)
+- Normalize region names from long format ("REGION V (BICOL REGION)") to short format ("Region V")
+- Deduplicate by school_id, keeping first report per school
+- Drop rows with null coordinates
+- Normalize province/municipality/barangay to title case
+
 ### Step 1.5: Build School ID Crosswalk
 
 The crosswalk maps any known historical school ID to its current canonical ID (most recent). Built in two layers by `modules/build_crosswalk.py`.
@@ -129,7 +141,7 @@ The four coordinate sources do not capture every operational public school. Some
 
 **Generalized design**: The enrollment loader accepts any school-level enrollment CSV with a `school_id` and `sector` column. Column name variants are resolved via an alias mapping. New enrollment files can be added by appending to the `ENROLLMENT_FILES` list — no code changes required.
 
-**Current enrollment file**: `SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv` (47,972 public schools; 562 not found in any coordinate source)
+**Current enrollment file**: `SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv` (47,972 public schools; 563 not found in any coordinate source)
 
 These 562 schools receive:
 - `coord_source = None` (no coordinates available)
@@ -144,6 +156,7 @@ For each `school_id`, select coordinates from the **first available** source in 
 2. OSMapaaralan
 3. NSBI 2023-2024
 4. Geolocation DepEd
+5. DRRMS IMRS 2025
 
 Record per school:
 - `coord_source` — which source provided the final lat/lon
@@ -153,7 +166,7 @@ Record per school:
 ### Step 4: Attach Location Columns
 
 - Pull `region`, `province`, `municipality`, `barangay` from the best available administrative source
-- Location column priority (independent of coordinate priority): NSBI 2023-2024 → Geolocation DepEd → Monitoring Sheet → OSMapaaralan → Enrollment
+- Location column priority (independent of coordinate priority): NSBI 2023-2024 → Geolocation DepEd → Monitoring Sheet → OSMapaaralan → DRRMS IMRS → Enrollment
 - For enrollment-only schools (no coordinate source), location columns come from the enrollment file
 - Record `location_source` to track provenance of admin fields
 
@@ -216,6 +229,7 @@ Record per school:
 6. **Crosswalk uses two layers** with distinct confidence levels: official mapping (authoritative) and spatial+name matching (heuristic). The `match_method` column lets downstream users filter by confidence.
 7. **Canonical ID is always the most recent ID**, reflecting DepEd's current administrative state.
 8. **Enrollment data expands the universe, not the coordinates.** Enrollment files identify schools that exist but have no geolocation data. These are included with null coordinates rather than silently excluded, ensuring the output is a complete roster of known public schools. The enrollment loader is generalized to accept any future enrollment CSV.
+9. **Private schools are excluded from public sources after crosswalk remapping.** OSMapaaralan contains both public and private school footprints. Known private school IDs (from the TOSF LIS universe and enrollment data) are removed from all public source DataFrames after ID remapping, preventing sector duplication in the outputs.
 
 ## Related Documentation
 
