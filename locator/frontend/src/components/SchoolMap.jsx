@@ -238,7 +238,7 @@ export default function SchoolMap({ schools, selectedSchool, mode = "idle", flyT
       zoomControl={true}
       scrollWheelZoom={true}
     >
-      <LayersControl position="topright">
+      <LayersControl position="bottomright">
         <LayersControl.BaseLayer checked name="Light">
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'

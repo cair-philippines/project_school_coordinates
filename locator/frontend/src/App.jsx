@@ -225,7 +225,7 @@ function App() {
             </button>
           </div>
 
-          {/* Map + Table share the same space */}
+          {/* Map + Table + Detail overlay share the same space */}
           <div className="flex-1 p-2 min-h-0 relative">
             {/* Map — always mounted, visually hidden when table is active */}
             <div className={`absolute inset-2 ${viewMode === "map" ? "z-10" : "z-0 opacity-0 pointer-events-none"}`}>
@@ -247,13 +247,15 @@ function App() {
                 />
               </div>
             )}
+
+            {/* School detail — overlays on the map, doesn't push it */}
+            {selectedSchool && (
+              <div className="absolute top-2 right-2 bottom-2 z-20">
+                <SchoolDetail school={selectedSchool} onClose={handleCloseDetail} />
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Right panel: school detail */}
-        {selectedSchool && (
-          <SchoolDetail school={selectedSchool} onClose={handleCloseDetail} />
-        )}
       </main>
     </div>
   );

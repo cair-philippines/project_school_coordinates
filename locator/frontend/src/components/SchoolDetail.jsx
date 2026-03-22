@@ -82,7 +82,7 @@ export default function SchoolDetail({ school, onClose }) {
   const trust = SOURCE_TRUST[school.coord_source] || null;
 
   return (
-    <div className="absolute inset-y-0 right-0 w-96 bg-[var(--card)] border-l border-[var(--border)] shadow-xl z-10 flex flex-col">
+    <div className="h-full w-[350px] bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-xl flex flex-col overflow-hidden">
       {/* Header */}
       <div className="shrink-0 p-4 border-b border-[var(--border)] bg-gradient-to-b from-[var(--accent)] to-[var(--card)]">
         <div className="flex items-start justify-between gap-2">
