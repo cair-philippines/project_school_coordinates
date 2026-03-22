@@ -33,7 +33,8 @@ function App() {
   const [mode, setMode] = useState("idle");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState({});
-  const [selectedSchool, setSelectedSchool] = useState(null);
+  const [selectedSchool, setSelectedSchool] = useState(null); // highlighted on map
+  const [detailSchool, setDetailSchool] = useState(null); // detail panel open
   const [flyToTrigger, setFlyToTrigger] = useState(0); // incremented to force map fly-to
   const [searchClearSignal, setSearchClearSignal] = useState(0);
   const [viewMode, setViewMode] = useState("map"); // "map" or "table"
@@ -89,11 +90,13 @@ function App() {
   const handleSearchSelect = useCallback((school) => {
     if (school) {
       setSelectedSchool(school);
+      setDetailSchool(null); // don't auto-open detail panel
       setFlyToTrigger((c) => c + 1);
     } else {
       // Search cleared
       setSearchQuery("");
       setSelectedSchool(null);
+      setDetailSchool(null);
       setMode("idle");
     }
   }, []);
@@ -128,22 +131,22 @@ function App() {
   // --- School selection from results list or table ---
   const handleSelectFromList = useCallback((school) => {
     setSelectedSchool(school);
+    setDetailSchool(null); // don't auto-open detail panel
     setFlyToTrigger((c) => c + 1);
     if (viewMode === "table") {
       setViewMode("map");
     }
   }, [viewMode]);
 
+  // --- Detail panel: opened by clicking the highlighted marker on the map ---
+  const handleOpenDetail = useCallback((school) => {
+    setDetailSchool(school);
+  }, []);
+
   const handleCloseDetail = useCallback(() => {
-    setSelectedSchool(null);
-    // In search mode, closing the detail panel resets to idle
-    // (the user is done with that school)
-    if (mode === "search") {
-      setSearchQuery("");
-      setSearchClearSignal((c) => c + 1);
-      setMode("idle");
-    }
-  }, [mode]);
+    setDetailSchool(null);
+    // Don't clear selectedSchool or change mode — the map stays where it is
+  }, []);
 
   return (
     <div className="h-full flex flex-col">
@@ -232,6 +235,7 @@ function App() {
               <SchoolMap
                 schools={mode !== "idle" ? results : []}
                 selectedSchool={selectedSchool}
+                onOpenDetail={handleOpenDetail}
                 mode={mode}
                 flyToTrigger={flyToTrigger}
               />
@@ -248,10 +252,10 @@ function App() {
               </div>
             )}
 
-            {/* School detail — overlays on the map, doesn't push it */}
-            {selectedSchool && (
-              <div className="absolute top-2 right-2 bottom-2 z-20">
-                <SchoolDetail school={selectedSchool} onClose={handleCloseDetail} />
+            {/* School detail — overlays on the map, opened by clicking highlighted marker */}
+            {detailSchool && (
+              <div className="absolute top-4 right-4 bottom-4 z-20">
+                <SchoolDetail school={detailSchool} onClose={handleCloseDetail} />
               </div>
             )}
           </div>

@@ -219,7 +219,58 @@ function capMarkers(withCoords) {
   return [...sample(pub, pubSlots), ...sample(priv, privSlots)];
 }
 
-export default function SchoolMap({ schools, selectedSchool, mode = "idle", flyToTrigger = 0 }) {
+/**
+ * Create an enlarged marker with an "i" info badge for the selected school.
+ * Visually distinct from regular markers — signals "click me for details."
+ */
+function createSelectedIcon(school) {
+  const validation = school.psgc_validation;
+  let color;
+  if (validation === "psgc_mismatch") {
+    color = school.sector === "public" ? "#22c55e" : "#3b82f6";
+  } else if (validation === "psgc_match") {
+    color = school.sector === "public" ? "#22c55e" : "#3b82f6";
+  } else {
+    color = "#9ca3b8";
+  }
+
+  return L.divIcon({
+    className: "",
+    html: `<div style="position:relative; width:28px; height:28px; cursor:pointer;" title="Click for details">
+      <div style="
+        position:absolute; top:4px; left:4px;
+        width:20px; height:20px;
+        background:${color};
+        border:3px solid white;
+        border-radius:50%;
+        box-shadow:0 2px 8px rgba(0,0,0,0.4);
+      "></div>
+      <div style="
+        position:absolute; top:0; left:0;
+        width:28px; height:28px;
+        border-radius:50%;
+        border:2px solid ${color};
+        opacity:0.4;
+        animation:pulse-ring 2s ease-out infinite;
+      "></div>
+      <div style="
+        position:absolute; top:-2px; right:-2px;
+        width:14px; height:14px;
+        background:white;
+        border:1.5px solid ${color};
+        border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-size:9px; font-weight:700; color:${color};
+        line-height:1; z-index:3;
+      ">i</div>
+    </div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -16],
+  });
+}
+
+export default function SchoolMap({ schools, selectedSchool, onOpenDetail, mode = "idle", flyToTrigger = 0 }) {
   // All schools with coords — used for bounds calculation
   const allWithCoords = useMemo(() => {
     return schools.filter((s) => s.latitude && s.longitude);
@@ -259,42 +310,54 @@ export default function SchoolMap({ schools, selectedSchool, mode = "idle", flyT
         </LayersControl.BaseLayer>
       </LayersControl>
       <MapViewController selectedSchool={selectedSchool} markers={allWithCoords} mode={mode} flyToTrigger={flyToTrigger} />
-      {markers.map((school) => (
-        <Marker
-          key={school.school_id}
-          position={[school.latitude, school.longitude]}
-          icon={createIcon(school)}
-        >
-          <Popup className="custom-popup">
-            <div className="p-3">
-              <div className="font-semibold text-sm text-gray-900 leading-tight">
-                {school.school_name || "Unnamed School"}
-              </div>
-              <div className="mt-1 text-xs text-gray-500">
-                {school.school_id} &middot;{" "}
-                <span className={school.sector === "public" ? "text-blue-600" : "text-pink-600"}>
-                  {school.sector}
-                </span>
-              </div>
-              <div className="mt-2 text-xs text-gray-600 space-y-0.5">
-                {school.barangay && <div>Brgy. {school.barangay}</div>}
-                {school.municipality && <div>{school.municipality}</div>}
-                {school.province && <div>{school.province}</div>}
-                {school.region && <div>{school.region}</div>}
-              </div>
-              <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400 space-y-0.5">
-                <div>{school.latitude?.toFixed(6)}, {school.longitude?.toFixed(6)}</div>
-                {school.coord_source && <div>Source: {school.coord_source}</div>}
-                {school.enrollment_status && (
-                  <div className={school.enrollment_status === "active" ? "text-green-600" : "text-amber-600"}>
-                    Enrollment: {school.enrollment_status.replace(/_/g, " ")}
+      {markers.map((school) => {
+        const isSelected = selectedSchool?.school_id === school.school_id;
+        return (
+          <Marker
+            key={school.school_id}
+            position={[school.latitude, school.longitude]}
+            icon={isSelected ? createSelectedIcon(school) : createIcon(school)}
+            zIndexOffset={isSelected ? 1000 : 0}
+            eventHandlers={isSelected ? {
+              click: (e) => {
+                e.originalEvent.stopPropagation();
+                onOpenDetail(school);
+              },
+            } : undefined}
+          >
+            {!isSelected && (
+              <Popup className="custom-popup">
+                <div className="p-3">
+                  <div className="font-semibold text-sm text-gray-900 leading-tight">
+                    {school.school_name || "Unnamed School"}
                   </div>
-                )}
-              </div>
-            </div>
-          </Popup>
-        </Marker>
-      ))}
+                  <div className="mt-1 text-xs text-gray-500">
+                    {school.school_id} &middot;{" "}
+                    <span className={school.sector === "public" ? "text-blue-600" : "text-pink-600"}>
+                      {school.sector}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 space-y-0.5">
+                    {school.barangay && <div>Brgy. {school.barangay}</div>}
+                    {school.municipality && <div>{school.municipality}</div>}
+                    {school.province && <div>{school.province}</div>}
+                    {school.region && <div>{school.region}</div>}
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400 space-y-0.5">
+                    <div>{school.latitude?.toFixed(6)}, {school.longitude?.toFixed(6)}</div>
+                    {school.coord_source && <div>Source: {school.coord_source}</div>}
+                    {school.enrollment_status && (
+                      <div className={school.enrollment_status === "active" ? "text-green-600" : "text-amber-600"}>
+                        Enrollment: {school.enrollment_status.replace(/_/g, " ")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Popup>
+            )}
+          </Marker>
+        );
+      })}
     </MapContainer>
   );
 }
