@@ -27,7 +27,7 @@ OUTPUT_REPORT_DIR = PROJECT_ROOT / "output"
 
 # Enrollment files for universe expansion + status tagging (add paths here)
 ENROLLMENT_FILES = [
-    PROJECT_ROOT / "data" / "raw" / "SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv",
+    PROJECT_ROOT / "data" / "raw" / "project_bukas_enrollment_2024-25.csv",
 ]
 
 
@@ -240,6 +240,7 @@ def write_output(result):
         "coord_status",
         "coord_rejection_reason",
         "region",
+        "old_region",
         "division",
         "province",
         "municipality",
@@ -248,6 +249,12 @@ def write_output(result):
         "shsvp_participating",
         "jdvp_participating",
         "enrollment_status",
+        "school_management",
+        "annex_status",
+        "offers_es",
+        "offers_jhs",
+        "offers_shs",
+        "shs_strand_offerings",
         "psgc_region",
         "psgc_region_name",
         "psgc_province",
@@ -299,7 +306,8 @@ def write_output(result):
         {"field": "longitude", "value": "Cleaned longitude (WGS84). Null if coordinates were rejected or not submitted."},
         {"field": "coord_status", "value": "Coordinate quality status (see Coordinate Status below)"},
         {"field": "coord_rejection_reason", "value": "If coord_status=no_coords: why coordinates are missing (see Rejection Reasons below)"},
-        {"field": "region", "value": "DepEd administrative region (from LIS master list)"},
+        {"field": "region", "value": "DepEd administrative region (NIR-aware, from enrollment file)"},
+        {"field": "old_region", "value": "DepEd region (pre-NIR naming; Negros Occidental in Region VI, Negros Oriental/Siquijor in Region VII)"},
         {"field": "division", "value": "DepEd division (from LIS master list)"},
         {"field": "province", "value": "Province (from LIS master list)"},
         {"field": "municipality", "value": "City or municipality (from LIS master list)"},
@@ -308,6 +316,12 @@ def write_output(result):
         {"field": "shsvp_participating", "value": "Senior High School Voucher Program participation (1=yes, 0=no or not submitted)"},
         {"field": "jdvp_participating", "value": "Joint Delivery Voucher Program participation (1=yes, 0=no or not submitted)"},
         {"field": "enrollment_status", "value": "Whether the school reported enrollment in SY 2024-2025 (see Enrollment Status below)"},
+        {"field": "school_management", "value": "School management type (e.g., 'DepEd', 'Non-Sectarian', 'Sectarian', 'SUC', 'LUC'). From enrollment file."},
+        {"field": "annex_status", "value": "Annex classification (e.g., 'Standalone School', 'Mother School', 'Annex/Extension School'). From enrollment file."},
+        {"field": "offers_es", "value": "Whether the school offers Elementary (True/False). From enrollment file."},
+        {"field": "offers_jhs", "value": "Whether the school offers Junior High School (True/False). From enrollment file."},
+        {"field": "offers_shs", "value": "Whether the school offers Senior High School (True/False). From enrollment file."},
+        {"field": "shs_strand_offerings", "value": "Comma-delimited SHS strand offerings (e.g., 'ABM,HUMSS,STEM'). Null if school does not offer SHS."},
         {"field": "psgc_region", "value": "10-digit PSA Philippine Standard Geographic Code for region"},
         {"field": "psgc_region_name", "value": "PSA official region name"},
         {"field": "psgc_province", "value": "10-digit PSGC for province"},
@@ -381,7 +395,7 @@ def write_output(result):
 # Main
 # ---------------------------------------------------------------------------
 def append_psgc(result):
-    """Join PSGC crosswalk and run spatial validation."""
+    """Join PSGC crosswalk, backfill blank names, and run spatial validation."""
     root = str(PROJECT_ROOT)
 
     print("\nAppending PSGC codes...")
@@ -390,11 +404,94 @@ def append_psgc(result):
 
     result = result.merge(psgc, on="school_id", how="left")
     matched = result["psgc_barangay"].notna().sum()
-    print(f"  Matched: {matched:,} / {len(result):,}")
+    print(f"  PSGC matched: {matched:,} / {len(result):,}")
+
+    # Backfill blank school names from PSGC crosswalk
+    blank_name = result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")
+    has_psgc_name = result["psgc_school_name"].notna() & (result["psgc_school_name"] != "None")
+    backfill_mask = blank_name & has_psgc_name
+    result.loc[backfill_mask, "school_name"] = result.loc[backfill_mask, "psgc_school_name"]
+    print(f"  School names backfilled from PSGC: {backfill_mask.sum():,}")
+    remaining_blank = (result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")).sum()
+    print(f"  Still blank after backfill: {remaining_blank:,}")
+
+    # Drop the temporary psgc_school_name column
+    result = result.drop(columns=["psgc_school_name"], errors="ignore")
 
     print("\nSpatial validation (point-in-polygon)...")
     result = validate_psgc.spatial_lookup(root, result)
     result = validate_psgc.validate(result)
+
+    return result
+
+
+def enrich_from_enrollment(result):
+    """Enrich schools with metadata from the enrollment file."""
+    print("\nEnriching from enrollment metadata...")
+    for filepath in ENROLLMENT_FILES:
+        if not filepath.exists():
+            continue
+        meta = load_enrollment.load_full_metadata(str(filepath))
+        print(f"  Enrollment metadata: {len(meta):,} schools")
+
+        meta_indexed = meta.set_index("school_id")
+
+        # Backfill school_name where still blank
+        blank_name = result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")
+        in_meta = result["school_id"].isin(meta_indexed.index)
+        backfill_name = blank_name & in_meta
+        if backfill_name.sum() > 0:
+            fill_ids = result.loc[backfill_name, "school_id"]
+            result.loc[backfill_name, "school_name"] = meta_indexed.loc[
+                fill_ids.values, "school_name"
+            ].values
+            print(f"  School names backfilled from enrollment: {backfill_name.sum():,}")
+
+        # Add new columns
+        enroll_cols = [
+            "school_management", "annex_status",
+            "offers_es", "offers_jhs", "offers_shs", "shs_strand_offerings",
+        ]
+        for col in enroll_cols:
+            if col not in result.columns:
+                result[col] = None
+            matched = result["school_id"].isin(meta_indexed.index)
+            fill_ids = result.loc[matched, "school_id"]
+            if len(fill_ids) > 0 and col in meta_indexed.columns:
+                result.loc[matched, col] = meta_indexed.loc[
+                    fill_ids.values, col
+                ].values
+
+        # Add region (NIR-aware) and old_region
+        if "old_region" not in result.columns:
+            result["old_region"] = result["region"]
+
+        result["region_new"] = None
+        matched = result["school_id"].isin(meta_indexed.index)
+        fill_ids = result.loc[matched, "school_id"]
+        if len(fill_ids) > 0:
+            result.loc[matched, "region_new"] = meta_indexed.loc[
+                fill_ids.values, "region"
+            ].values
+
+        no_new_region = result["region_new"].isna() | (result["region_new"] == "None")
+        result.loc[no_new_region, "region_new"] = result.loc[no_new_region, "old_region"]
+
+        no_old = result["old_region"].isna() | (result["old_region"] == "None")
+        in_meta_old = no_old & result["school_id"].isin(meta_indexed.index)
+        if in_meta_old.sum() > 0:
+            fill_ids = result.loc[in_meta_old, "school_id"]
+            result.loc[in_meta_old, "old_region"] = meta_indexed.loc[
+                fill_ids.values, "old_region"
+            ].values
+
+        result["region"] = result["region_new"]
+        result = result.drop(columns=["region_new"])
+
+        print(f"  Enriched: {matched.sum():,} / {len(result):,}")
+
+    remaining_blank = (result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")).sum()
+    print(f"  Remaining blank school names: {remaining_blank:,}")
 
     return result
 
@@ -405,6 +502,7 @@ def main():
     result = expand_from_enrollment(result)
     result = tag_enrollment_status(result)
     result = append_psgc(result)
+    result = enrich_from_enrollment(result)
     validate_and_report(result, clean_stats)
     write_output(result)
     print("\nDone.")

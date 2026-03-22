@@ -13,7 +13,7 @@ This directory contains the untouched source files used by the pipelines. These 
 | `SY 2023-2024 LIST OF SCHOOLS WITH LONGITUDE AND LATITUDE.xlsx` | Official NSBI school list with coordinates (~47K schools) | DepEd NSBI system |
 | `Geolocation of Public Schools_DepEd.xlsx` | Internal DepEd geolocation file with coordinates and School ID Mapping tab | DepEd internal office |
 | `DRRMS IMRS data 2025.csv` | Disaster incident reports with school coordinates (~16K unique schools) | DepEd DRRMS |
-| `SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv` | School-level enrollment data for universe expansion (identifies public schools not in coordinate sources) | DepEd LIS |
+| `project_bukas_enrollment_2024-25.csv` | School-level enrollment data with metadata (school name, management, annex status, curricular offerings, SHS strands, NIR-aware region). Used for universe expansion, metadata enrichment, and enrollment status tagging. | DepEd LIS |
 
 ### Private School Pipeline (`scripts/build_private_coordinates.py`)
 

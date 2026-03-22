@@ -221,7 +221,7 @@ The four coordinate sources do not capture every operational public school. Cros
 
 ### 2.5.1 Source
 
-**File**: `SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv`
+**File**: `project_bukas_enrollment_2024-25.csv`
 
 School-level enrollment data for SY 2024-2025 (the school year that concluded March 2026). Contains 60,095 rows across public, private, and SUCsLUCs sectors.
 

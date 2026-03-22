@@ -46,6 +46,7 @@ def load(project_root):
 
     renamed = df.rename(columns={
         "BEIS School ID": "school_id",
+        "School Name": "psgc_school_name",
         "(PSGC) REGION": "psgc_region",
         "(PSGC) REGION NAME": "psgc_region_name",
         "(PSGC) PROVINCE": "psgc_province",
@@ -81,6 +82,7 @@ def load(project_root):
 
     out_cols = [
         "school_id",
+        "psgc_school_name",
         "psgc_region", "psgc_region_name",
         "psgc_province", "psgc_province_name",
         "psgc_municity", "psgc_municity_name",

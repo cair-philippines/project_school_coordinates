@@ -78,12 +78,19 @@ Two separate pipelines address the distinct challenges of each sector:
 | `coord_source` | Which source provided the coordinates |
 | `monitoring_chosen_source` | Sub-source chosen by validator (if applicable) |
 | `sources_available` | All sources with coordinates for this school; `enrollment_only` if only known from enrollment |
-| `region` | Administrative region |
+| `region` | Administrative region (NIR-aware) |
+| `old_region` | Pre-NIR region naming |
 | `province` | Province |
 | `municipality` | City or municipality |
 | `barangay` | Barangay |
 | `location_source` | Which source provided the admin fields |
 | `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
+| `school_management` | DepEd, Non-Sectarian, Sectarian, SUC, etc. |
+| `annex_status` | Standalone/Mother/Annex/Mobile |
+| `offers_es` | Offers Elementary (True/False) |
+| `offers_jhs` | Offers JHS (True/False) |
+| `offers_shs` | Offers SHS (True/False) |
+| `shs_strand_offerings` | Comma-delimited SHS strands |
 | `psgc_region` | 10-digit PSGC region code |
 | `psgc_province` | 10-digit PSGC province code |
 | `psgc_municity` | 10-digit PSGC municipality/city code |
@@ -113,7 +120,8 @@ Two separate pipelines address the distinct challenges of each sector:
 | `longitude` | Cleaned longitude (null if rejected) |
 | `coord_status` | `valid`, `fixed_swap`, or `no_coords` |
 | `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis` |
-| `region` | Administrative region |
+| `region` | Administrative region (NIR-aware) |
+| `old_region` | Pre-NIR region naming |
 | `division` | Division |
 | `province` | Province |
 | `municipality` | City or municipality |
@@ -122,6 +130,12 @@ Two separate pipelines address the distinct challenges of each sector:
 | `shsvp_participating` | SHS VP flag (1/0) |
 | `jdvp_participating` | JDVP flag (1/0) |
 | `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
+| `school_management` | School management type |
+| `annex_status` | Standalone/Mother/Annex/Mobile |
+| `offers_es` | Offers Elementary (True/False) |
+| `offers_jhs` | Offers JHS (True/False) |
+| `offers_shs` | Offers SHS (True/False) |
+| `shs_strand_offerings` | Comma-delimited SHS strands |
 | `psgc_region` | 10-digit PSGC region code |
 | `psgc_province` | 10-digit PSGC province code |
 | `psgc_municity` | 10-digit PSGC municipality/city code |

@@ -109,6 +109,10 @@ This identifies schools that may have ceased operations or not yet reported. The
 
 Same process as the public pipeline — see **[PSGC Standardization Plan](psgc_standardization_plan.md)**. Appends PSGC codes and validates coordinates against barangay polygons.
 
+### Step 4.6: Enrollment Metadata Enrichment
+
+Same process as the public pipeline. Enriches with `region` (NIR-aware), `old_region`, `school_management`, `annex_status`, `offers_es/jhs/shs`, `shs_strand_offerings`, and backfills remaining blank school names.
+
 ### Step 5: Validation & Report
 
 - Coordinate coverage: how many of the total universe have valid coordinates
@@ -130,7 +134,8 @@ Same process as the public pipeline — see **[PSGC Standardization Plan](psgc_s
 | `longitude` | Cleaned longitude (null if rejected) |
 | `coord_status` | `valid`, `fixed_swap`, or `no_coords` |
 | `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis` |
-| `region` | Administrative region |
+| `region` | Administrative region (NIR-aware) |
+| `old_region` | Pre-NIR region naming |
 | `division` | Division |
 | `province` | Province |
 | `municipality` | City or municipality |
@@ -139,6 +144,12 @@ Same process as the public pipeline — see **[PSGC Standardization Plan](psgc_s
 | `shsvp_participating` | SHS VP flag (1/0) |
 | `jdvp_participating` | JDVP flag (1/0) |
 | `enrollment_status` | `active` (in enrollment data) or `no_enrollment_reported` |
+| `school_management` | School management type |
+| `annex_status` | Standalone/Mother/Annex/Mobile |
+| `offers_es` | Offers Elementary (True/False) |
+| `offers_jhs` | Offers JHS (True/False) |
+| `offers_shs` | Offers SHS (True/False) |
+| `shs_strand_offerings` | Comma-delimited SHS strands |
 | `psgc_region` | 10-digit PSGC region code |
 | `psgc_region_name` | PSA region name |
 | `psgc_province` | 10-digit PSGC province code |

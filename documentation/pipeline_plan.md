@@ -39,7 +39,7 @@ project_coordinates/
 │   │   ├── SY 2023-2024 LIST OF SCHOOLS WITH LONGITUDE AND LATITUDE.xlsx
 │   │   ├── Geolocation of Public Schools_DepEd.xlsx
 │   │   ├── DRRMS IMRS data 2025.csv
-│   │   └── SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv
+│   │   └── project_bukas_enrollment_2024-25.csv
 │   └── modified/                     # pipeline outputs
 ├── scripts/
 │   └── build_coordinates.py          # orchestrator
@@ -141,7 +141,7 @@ The four coordinate sources do not capture every operational public school. Some
 
 **Generalized design**: The enrollment loader accepts any school-level enrollment CSV with a `school_id` and `sector` column. Column name variants are resolved via an alias mapping. New enrollment files can be added by appending to the `ENROLLMENT_FILES` list — no code changes required.
 
-**Current enrollment file**: `SY_2024_2025_School_Level_Data_on_Official_Enrollment.csv` (47,972 public schools; 563 not found in any coordinate source)
+**Current enrollment file**: `project_bukas_enrollment_2024-25.csv` (47,972 public schools; 563 not found in any coordinate source)
 
 These 562 schools receive:
 - `coord_source = None` (no coordinates available)
@@ -176,9 +176,18 @@ Appends PSGC codes and PSA-standard names, then validates coordinates against ba
 
 **Process**:
 1. Load PSGC crosswalk (`modules/load_psgc.py`) — maps school_id → PSGC codes/names, pads codes to 10 digits
-2. Left-join to coordinates dataset by school_id
+2. Left-join to coordinates dataset by school_id; backfill blank school names from PSGC crosswalk
 3. Load barangay shapefile (`modules/validate_psgc.py`) and perform point-in-polygon for all schools with coordinates
 4. Compare claimed PSGC barangay (from crosswalk) vs observed (from spatial lookup) and tag as `psgc_match`, `psgc_mismatch`, or `psgc_no_validation`
+
+### Step 4.6: Enrollment Metadata Enrichment
+
+Enriches the output with metadata from the enrollment file (`project_bukas_enrollment_2024-25.csv`):
+- Backfill remaining blank school names
+- Add `region` (NIR-aware) and `old_region` (pre-NIR); for NIR schools, `old_region` is derived by mapping NIR provinces back to Region VI/VII
+- Add `school_management`, `annex_status`, `offers_es`, `offers_jhs`, `offers_shs`
+- Derive `shs_strand_offerings` (comma-delimited) from non-zero SHS enrollment by strand
+- PSO schools (35) are excluded from the enrollment file
 
 ### Step 5: Validation & Report
 
@@ -201,12 +210,19 @@ Appends PSGC codes and PSA-standard names, then validates coordinates against ba
 | `coord_source` | Source that provided coordinates |
 | `monitoring_chosen_source` | Sub-source chosen by validator (if applicable) |
 | `sources_available` | All sources that had coordinates for this school; `enrollment_only` if only known from enrollment |
-| `region` | Administrative region |
+| `region` | Administrative region (NIR-aware, from enrollment file) |
+| `old_region` | Pre-NIR region naming (Negros Occidental in Region VI, Negros Oriental/Siquijor in Region VII) |
 | `province` | Province |
 | `municipality` | City or municipality |
 | `barangay` | Barangay |
 | `location_source` | Source that provided admin fields |
 | `enrollment_status` | `active` (in enrollment data) or `no_enrollment_reported` |
+| `school_management` | School management type (DepEd, Non-Sectarian, Sectarian, SUC, etc.) |
+| `annex_status` | Standalone School, Mother School, Annex/Extension School, Mobile School/Center |
+| `offers_es` | Whether the school offers Elementary (True/False) |
+| `offers_jhs` | Whether the school offers Junior High School (True/False) |
+| `offers_shs` | Whether the school offers Senior High School (True/False) |
+| `shs_strand_offerings` | Comma-delimited SHS strands (e.g., "ABM,HUMSS,STEM,TVL") |
 | `psgc_region` | 10-digit PSGC region code |
 | `psgc_region_name` | PSA region name |
 | `psgc_province` | 10-digit PSGC province code |
