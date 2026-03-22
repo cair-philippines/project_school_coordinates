@@ -203,6 +203,7 @@ project_coordinates/
 ### Public Schools
 - **[Pipeline Plan](documentation/pipeline_plan.md)** — objective, source descriptions, priority cascade rationale, step-by-step design, output schemas, and design decisions.
 - **[Technical Notes](documentation/technical_notes.md)** — comprehensive processing details: source ingestion, column mappings, crosswalk algorithms, threshold choices, validation results, and known limitations.
+- **[Duplication Audit](documentation/duplication_audit.md)** — comprehensive audit of the public school coordinates dataset for duplicate and near-duplicate records. Identifies 25 same-barangay exact duplicates, 6 near-identical name pairs, 236 systematic X/1X ID pairs, and documents recommended actions (merge, investigate, retain) for each. Intended as a reference for championing smarter school data practices.
 
 ### Private Schools
 - **[Pipeline Plan](documentation/private_pipeline_plan.md)** — objective, source description, coordinate cleaning strategy, output schema, and design decisions.
