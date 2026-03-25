@@ -63,6 +63,16 @@ For each school, compare:
 | `psgc_mismatch` | Claimed and observed barangays differ |
 | `psgc_no_validation` | Cannot validate (no coordinates, no PSGC code, or coordinates fall outside all polygons) |
 
+### Step 4b: Municipal-Level Coordinate Validation
+
+After the barangay-level check, a second validation compares each school's coordinates against its declared municipality polygon. This catches schools that are in the wrong municipality entirely or plotted over water — errors more severe than a barangay-level mismatch.
+
+Two checks:
+1. **Over water**: school has coordinates but falls outside all land polygons (observed municipality is null). These are data entry errors — transposed digits, wrong decimal placement, or copy-paste errors.
+2. **Wrong municipality**: the observed municipality (from point-in-polygon) differs from the school's declared `psgc_municity`. Comparison uses the first 7 digits of the 10-digit PSGC code.
+
+Schools flagged by either check receive `coord_status = "suspect"` with `coord_rejection_reason` of `over_water` or `wrong_municipality`. This applies to **both public and private** pipelines.
+
 ### Step 5: Output
 
 New columns appended to existing public and private parquets:

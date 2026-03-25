@@ -271,6 +271,7 @@ def write_output(result):
         "psgc_barangay",
         "psgc_barangay_name",
         "psgc_observed_barangay",
+        "psgc_observed_municity",
         "psgc_validation",
         "urban_rural",
         "income_class",
@@ -338,6 +339,7 @@ def write_output(result):
         {"field": "psgc_barangay", "value": "10-digit PSGC for barangay (CLAIMED — from school-to-PSGC crosswalk, Q4 2024)"},
         {"field": "psgc_barangay_name", "value": "PSA official barangay name (claimed)"},
         {"field": "psgc_observed_barangay", "value": "10-digit PSGC for barangay (OBSERVED — from point-in-polygon against Q4 2025 shapefile). Which barangay the school's coordinates actually fall in."},
+        {"field": "psgc_observed_municity", "value": "7-digit PSGC for municipality (OBSERVED — from the same point-in-polygon). Null if coordinate falls outside all polygons (over water)."},
         {"field": "psgc_validation", "value": "Result of comparing claimed vs observed barangay (see PSGC Validation below)"},
         {"field": "urban_rural", "value": "Urban or Rural classification based on 2020 Census of Population and Housing"},
         {"field": "income_class", "value": "Municipal income classification (1st through 5th class) based on DOF D.O. 74, S. 2024"},
@@ -428,6 +430,7 @@ def append_psgc(result):
     print("\nSpatial validation (point-in-polygon)...")
     result = validate_psgc.spatial_lookup(root, result)
     result = validate_psgc.validate(result)
+    result = validate_psgc.validate_municipality(result)
 
     return result
 

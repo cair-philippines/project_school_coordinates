@@ -179,6 +179,7 @@ Appends PSGC codes and PSA-standard names, then validates coordinates against ba
 2. Left-join to coordinates dataset by school_id; backfill blank school names from PSGC crosswalk
 3. Load barangay shapefile (`modules/validate_psgc.py`) and perform point-in-polygon for all schools with coordinates
 4. Compare claimed PSGC barangay (from crosswalk) vs observed (from spatial lookup) and tag as `psgc_match`, `psgc_mismatch`, or `psgc_no_validation`
+5. **Municipal-level validation**: flag schools as `coord_status = "suspect"` if their coordinates fall outside all polygons (`over_water`) or in a different municipality than declared (`wrong_municipality`)
 
 ### Step 4.6: Enrollment Metadata Enrichment
 
@@ -210,6 +211,8 @@ Enriches the output with metadata from the enrollment file (`project_bukas_enrol
 | `coord_source` | Source that provided coordinates |
 | `monitoring_chosen_source` | Sub-source chosen by validator (if applicable) |
 | `sources_available` | All sources that had coordinates for this school; `enrollment_only` if only known from enrollment |
+| `coord_status` | `valid`, `suspect` (over water or wrong municipality), or `no_coords` |
+| `coord_rejection_reason` | If suspect: `over_water` or `wrong_municipality` |
 | `region` | Administrative region (NIR-aware, from enrollment file) |
 | `old_region` | Pre-NIR region naming (Negros Occidental in Region VI, Negros Oriental/Siquijor in Region VII) |
 | `province` | Province |

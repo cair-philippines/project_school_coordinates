@@ -48,7 +48,7 @@ Two separate pipelines address the distinct challenges of each sector:
 
 ## Output
 
-### Public Schools — 48,426 schools (47,864 with coordinates, 562 enrollment-only; 535 with no enrollment reported)
+### Public Schools — 48,436 schools (46,270 valid coords, 1,604 suspect coords, 562 no coords)
 
 | File | Description |
 |---|---|
@@ -58,7 +58,7 @@ Two separate pipelines address the distinct challenges of each sector:
 | `data/modified/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
 | `output/build_public_report.txt` | Pipeline run summary and statistics |
 
-### Private Schools — 12,167 schools (8,144 valid coords, 770 suspect coords, 156 enrollment-only; 228 with no enrollment reported)
+### Private Schools — 12,167 schools (7,510 valid coords, 1,318 suspect coords, 3,253 no coords)
 
 | File | Description |
 |---|---|
@@ -78,6 +78,8 @@ Two separate pipelines address the distinct challenges of each sector:
 | `coord_source` | Which source provided the coordinates |
 | `monitoring_chosen_source` | Sub-source chosen by validator (if applicable) |
 | `sources_available` | All sources with coordinates for this school; `enrollment_only` if only known from enrollment |
+| `coord_status` | `valid`, `suspect` (over water or wrong municipality), or `no_coords` |
+| `coord_rejection_reason` | If suspect: `over_water` or `wrong_municipality` |
 | `region` | Administrative region (NIR-aware) |
 | `old_region` | Pre-NIR region naming |
 | `province` | Province |
