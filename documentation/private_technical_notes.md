@@ -116,21 +116,65 @@ Self-reported coordinates require cleaning. Three sequential passes are applied:
 
 After cleaning: **8,914 schools with usable coordinates** (8,809 valid + 105 fixed swaps).
 
-### 2.5 Cleaning Pass Order Matters
+### 2.5 Pass 4 — Suspect Coordinate Detection
 
-The passes are ordered deliberately:
+Passes 1–3 catch coordinates that are technically invalid. Pass 4 catches coordinates that are technically valid but **spatially implausible** — they represent placeholder/default values from the TOSF submission system, not actual school locations.
+
+**Discovery context**: While building a school-to-school distance network in project_ugnay, 469 private schools across all 18 DepEd regions were found sharing the exact coordinate `(14.57929, 121.06494)` — a point in San Juan/Pasig, NCR. Schools administratively in Ilocos Norte, Sultan Kudarat, and Cagayan all pointed to this same NCR location. The TOSF Google Form likely pre-filled this as a default value.
+
+**Check 4a — Known placeholder coordinates**
+
+A hardcoded list of known default values with a tolerance of 0.001 degrees (~110 meters):
+- `(14.57929, 121.06494)` — the primary TOSF system default (466 exact matches)
+- `(14.61789, 121.10269)` — a possible second default (7 matches)
+
+The tolerance is deliberately tight — 110m is enough to catch minor floating-point variants of the same default but won't flag legitimate schools in the San Juan/Pasig area. The previous implementation used 0.05 degrees (~5.5 km) which falsely flagged ~400 legitimate NCR schools.
+
+**Result**: 488 schools flagged as `placeholder_default`.
+
+**Check 4b — Suspicious coordinate clustering**
+
+For any coordinate shared by 3+ schools (rounded to 5 decimal places) that are in different municipalities, flag all of them. The logic: legitimate coordinate sharing (schools in the same building or compound) would be in the same municipality. Schools from different municipalities sharing exact coordinates is a clear signal of placeholder data.
+
+This check generalizes beyond the known defaults — it catches future placeholder values without needing to know them in advance.
+
+**Result**: 62 schools flagged as `coordinate_cluster`. Notable clusters:
+- `(14.0, 121.0)`: 16 schools across multiple regions
+- `(14.0, 120.0)`: 9 schools
+- `(15.0, 120.0)`: 7 schools
+- `(16.0, 120.0)`: 5 schools
+
+**Check 4c — Round number detection**
+
+Coordinates where both latitude and longitude have fewer than 3 decimal places (precision coarser than ~100 meters). Values like `(17.0, 120.0)` or `(18.0, 121.0)` are not GPS readings — they're typed-in approximations or system-generated round values.
+
+The check counts the decimal places of each coordinate value. Both must be round to trigger the flag — having one round coordinate is common for manual entry, but both being round is suspicious.
+
+**Result**: 220 schools flagged as `round_coordinates`.
+
+**Why flag rather than reject**: Setting coordinates to null would make these schools invisible on the map and unusable for any analysis. Flagging with `coord_status = "suspect"` preserves the coordinates for visual inspection while clearly marking them as untrustworthy. Downstream projects can filter with `coord_status != "suspect"`. The PSGC point-in-polygon validation still runs on suspect schools, providing a second data point (most placeholder schools receive `psgc_mismatch` since their coordinate is in NCR but they're administratively elsewhere).
+
+### 2.6 Cleaning Pass Order Matters
+
+The four passes are ordered deliberately:
 1. **Swap first** — recovers coordinates that would otherwise be rejected as out-of-bounds
-2. **Invalid second** — removes values that are impossible on Earth (no point checking bounds)
-3. **Out-of-bounds last** — catches plausible but incorrect coordinates (e.g., lat=14, lon=15 is valid on Earth but not in the Philippines)
+2. **Invalid second** — removes values that are impossible on Earth (no point checking bounds or placeholders)
+3. **Out-of-bounds third** — catches plausible but incorrect coordinates outside the Philippines
+4. **Suspect last** — flags coordinates that passed all validity checks but are spatially implausible
 
 ## 3. Merge: Universe + Coordinates
 
-Left join: universe (12,011 schools) ← cleaned coordinates (9,632 submissions → 8,914 with valid coords).
+Left join: universe (12,011 schools) ← cleaned coordinates (9,632 submissions → 8,148 valid + 770 suspect).
 
-**Schools without coordinates** (3,097 total):
+**Schools without coordinates** (3,253 total):
 - `no_submission` (2,385): school exists in LIS but did not submit the Google Form
 - `invalid` (504): submitted but coordinates were rejected as invalid
 - `out_of_bounds` (208): submitted but coordinates fell outside PH bounds
+
+**Schools with suspect coordinates** (770 total):
+- `placeholder_default` (488): known TOSF system default values
+- `round_coordinates` (220): both lat and lon have <3 decimal places
+- `coordinate_cluster` (62): 3+ schools from different municipalities share exact coordinates
 
 **Location columns**: Sourced exclusively from the universe sheet (LIS official metadata), not from the self-reported RAW DATA. The LIS names and admin fields are standardized; the Google Form responses have inconsistent formatting (e.g., "Province of Laguna" vs "Laguna" vs "LAGUNA").
 
@@ -170,9 +214,10 @@ The 228 schools with no reported enrollment are retained with their coordinates 
 
 | Metric | Count | % |
 |---|---|---|
-| Total private schools | 12,168 | 100% |
-| With coordinates | 8,914 | 73.3% |
-| Without coordinates | 3,254 | 26.7% |
+| Total private schools | 12,167 | 100% |
+| With valid coordinates | 8,144 | 66.9% |
+| With suspect coordinates | 770 | 6.3% |
+| Without coordinates | 3,253 | 26.7% |
 
 ### 4.2 Regional Coverage
 
@@ -188,7 +233,7 @@ Among submitting schools:
 ## 5. Output Formats
 
 ### 5.1 Parquet + CSV
-- `private_school_coordinates.parquet` — 12,168 rows, 15 columns
+- `private_school_coordinates.parquet` — 12,167 rows, 33 columns
 - `private_school_coordinates.csv` — same content
 
 ### 5.2 Excel Workbook
@@ -213,8 +258,10 @@ Among submitting schools:
 
 ## 7. Known Limitations
 
-1. **Self-reported coordinates have no validation layer** — even the 8,914 "valid" coordinates may be inaccurate (e.g., pointing to the wrong building, the school head's home, or a general municipality centroid). No cross-source verification is possible with a single source.
-2. **Bounding box is a coarse filter** — a coordinate that falls within the Philippines box but is still wrong (e.g., correct province but wrong city) will pass cleaning undetected.
+1. **Self-reported coordinates have no validation layer beyond Pass 4** — even the 8,144 "valid" coordinates may be inaccurate (e.g., pointing to the wrong building, the school head's home, or a general municipality centroid). Pass 4 catches the most egregious cases (placeholders, clusters, round numbers) but subtle errors remain undetectable with a single source.
+2. **Bounding box is a coarse filter** — a coordinate that falls within the Philippines box but is still wrong (e.g., correct province but wrong city) will pass passes 1–3. Pass 4's cluster detection and the PSGC validation provide additional layers but don't catch all cases.
 3. **GASTPE flags are only available for submitting schools** — non-submitting schools receive 0, which is indistinguishable from "submitted and does not participate". The `coord_status` column can be used to distinguish (no_coords + no_submission = did not submit).
 4. **Universe may undercount** — the LIS list is from September 2025 and may not include very new schools or exclude recently closed ones.
 5. **Deduplication keeps first submission** — if a school submitted twice with different coordinates, only the first is retained. There is no way to determine which is more accurate.
+6. **Placeholder detection relies on known values** — Pass 4a uses a hardcoded list of known defaults. If the TOSF system changes its default coordinate, it won't be caught until discovered. Pass 4b (clustering) provides generalized protection but requires 3+ schools to trigger.
+7. **Round number threshold is conservative** — Pass 4c flags coordinates where both lat and lon have <3 decimal places. Schools with coordinates like `(14.58, 121.07)` (2 decimal places on both) are flagged, but `(14.579, 121.065)` (3 places) passes even though 3-place precision (~100m) may still be a rough estimate.

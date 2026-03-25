@@ -58,7 +58,7 @@ Two separate pipelines address the distinct challenges of each sector:
 | `data/modified/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
 | `output/build_public_report.txt` | Pipeline run summary and statistics |
 
-### Private Schools — 12,168 schools (8,914 with coordinates, 157 enrollment-only; 228 with no enrollment reported)
+### Private Schools — 12,167 schools (8,144 valid coords, 770 suspect coords, 156 enrollment-only; 228 with no enrollment reported)
 
 | File | Description |
 |---|---|
@@ -118,8 +118,8 @@ Two separate pipelines address the distinct challenges of each sector:
 | `school_name` | Official LIS school name |
 | `latitude` | Cleaned latitude (null if rejected) |
 | `longitude` | Cleaned longitude (null if rejected) |
-| `coord_status` | `valid`, `fixed_swap`, or `no_coords` |
-| `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis` |
+| `coord_status` | `valid`, `fixed_swap`, `suspect`, or `no_coords` |
+| `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis`; if suspect: `placeholder_default`, `coordinate_cluster`, `round_coordinates` |
 | `region` | Administrative region (NIR-aware) |
 | `old_region` | Pre-NIR region naming |
 | `division` | Division |

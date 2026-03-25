@@ -85,14 +85,19 @@ def load(project_root):
             or props.get("addr:place")
         )
 
-        records.append({
-            "school_id": str(ref).strip(),
-            "school_name": props.get("name"),
-            "latitude": lat,
-            "longitude": lon,
-            "province": props.get("addr:province"),
-            "municipality": municipality,
-        })
+        # Split compound refs (e.g., "132677;304874") into separate records.
+        # OSM mappers sometimes enter multiple school IDs for integrated schools
+        # that were formed by merging an ES and HS under a new ID.
+        ref_parts = [r.strip() for r in str(ref).split(";") if r.strip()]
+        for ref_part in ref_parts:
+            records.append({
+                "school_id": ref_part,
+                "school_name": props.get("name"),
+                "latitude": lat,
+                "longitude": lon,
+                "province": props.get("addr:province"),
+                "municipality": municipality,
+            })
 
     df = pd.DataFrame(records)
     df["school_id"] = normalize_school_id(df["school_id"])

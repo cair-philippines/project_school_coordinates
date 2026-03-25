@@ -45,11 +45,18 @@ def load_sources():
     coords, clean_stats = load_private_tosf.load_coordinates(root)
     print(f"  RAW DATA submissions: {clean_stats['total_submissions']:,} (deduplicated)")
 
-    print(f"\nCoordinate cleaning:")
+    print(f"\nCoordinate cleaning (Passes 1-3):")
     print(f"  Fixed swapped lat/lon: {clean_stats['fixed_swap']:,}")
     print(f"  Rejected invalid:      {clean_stats['rejected_invalid']:,}")
     print(f"  Rejected out-of-bounds: {clean_stats['rejected_out_of_bounds']:,}")
-    print(f"  Valid after cleaning:  {clean_stats['valid']:,}")
+
+    print(f"\nSuspect coordinate detection (Pass 4):")
+    print(f"  Placeholder defaults:  {clean_stats.get('suspect_placeholder', 0):,}")
+    print(f"  Coordinate clusters:   {clean_stats.get('suspect_cluster', 0):,}")
+    print(f"  Round coordinates:     {clean_stats.get('suspect_round', 0):,}")
+    print(f"  Total suspect:         {clean_stats.get('suspect_total', 0):,}")
+
+    print(f"\n  Valid after all passes: {clean_stats['valid']:,}")
 
     return universe, coords, clean_stats
 

@@ -64,17 +64,25 @@ documentation/
 
 ### Step 2: Clean Coordinates
 
-Three-pass cleaning applied to the coordinates from RAW DATA:
+Four-pass cleaning applied to the coordinates from RAW DATA:
 
-| Pass | Condition | Action | Expected |
+| Pass | Condition | Action | Result |
 |---|---|---|---|
-| **Fix swapped** | lon in [4.5, 21.5] AND lat in [116, 127] | Swap lat ↔ lon | ~116 |
-| **Reject invalid** | null, non-finite, abs(lat) > 90, abs(lon) > 180, or zero | Set coords to null | ~555 |
-| **Reject out-of-PH** | lat not in [4.5, 21.5] OR lon not in [116, 127] | Set coords to null | ~230 |
+| **1. Fix swapped** | lon in [4.5, 21.5] AND lat in [116, 127] | Swap lat ↔ lon | ~105 fixed |
+| **2. Reject invalid** | null, non-finite, abs(lat) > 90, abs(lon) > 180, or zero | Set coords to null | ~505 rejected |
+| **3. Reject out-of-PH** | lat not in [4.5, 21.5] OR lon not in [116, 127] | Set coords to null | ~208 rejected |
+| **4. Flag suspect** | Placeholder defaults, coordinate clusters, round numbers | Mark as `suspect` | ~770 flagged |
+
+**Pass 4 (suspect coordinate detection)** addresses coordinates that are technically valid but spatially implausible — they pass passes 1–3 but are almost certainly wrong. Discovered when project_ugnay found 469 schools across all 18 regions sharing the exact same coordinate `(14.57929, 121.06494)` in the San Juan/Pasig area of NCR.
+
+Pass 4 has three sub-checks:
+- **4a — Known placeholders**: Coordinates within ~110m of known TOSF system defaults (`14.57929, 121.06494` and `14.61789, 121.10269`). These are pre-filled values that schools never corrected. ~488 schools.
+- **4b — Coordinate clusters**: 3+ schools from different municipalities sharing the same exact coordinate. Legitimate co-location would be in the same municipality. ~62 schools.
+- **4c — Round numbers**: Both lat and lon have fewer than 3 decimal places (precision coarser than ~100m). Values like `(14.0, 121.0)` are typed-in approximations, not GPS readings. ~220 schools.
 
 Each school receives:
-- `coord_status`: `valid`, `fixed_swap`, or `no_coords`
-- `coord_rejection_reason`: if no_coords, one of `invalid`, `out_of_bounds`, or `no_submission`
+- `coord_status`: `valid`, `fixed_swap`, `suspect`, or `no_coords`
+- `coord_rejection_reason`: if no_coords, one of `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis`; if suspect, one of `placeholder_default`, `coordinate_cluster`, `round_coordinates`
 
 ### Step 3: Merge Universe + Coordinates
 
