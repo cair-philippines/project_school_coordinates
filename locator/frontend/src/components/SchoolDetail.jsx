@@ -206,13 +206,28 @@ export default function SchoolDetail({ school, onClose }) {
             </div>
           )}
 
-          {/* Private school coord_status */}
-          {!isPublic && school.coord_status && (
+          {/* Coord status (both sectors) */}
+          {school.coord_status && school.coord_status === "suspect" && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-1">
+              <div className="text-xs font-medium text-red-800">Suspect coordinates</div>
+              <div className="text-[11px] text-red-700">
+                {school.coord_rejection_reason === "placeholder_default"
+                  ? "This coordinate matches a known TOSF system default value. The school almost certainly did not enter its actual location."
+                  : school.coord_rejection_reason === "coordinate_cluster"
+                  ? "This coordinate is shared by multiple schools across different municipalities — likely a placeholder or system default."
+                  : school.coord_rejection_reason === "round_coordinates"
+                  ? "Both latitude and longitude have very low precision (fewer than 3 decimal places). This appears to be a rough estimate, not a GPS reading."
+                  : school.coord_rejection_reason === "outside_all_polygons"
+                  ? "This coordinate falls outside all known land polygons — it may be over water or in an unmapped area. Likely a data entry error (transposed digits or wrong decimal)."
+                  : school.coord_rejection_reason === "wrong_municipality"
+                  ? "This coordinate falls in a different municipality than the school's declared location. The coordinate or the administrative assignment may be incorrect."
+                  : `Flagged as suspect: ${school.coord_rejection_reason || "unknown reason"}`}
+              </div>
+            </div>
+          )}
+          {school.coord_status === "fixed_swap" && (
             <div className="text-[11px] text-[var(--muted-foreground)]">
-              Coord status: <b>{school.coord_status}</b>
-              {school.coord_status === "fixed_swap" && (
-                <span className="ml-1">(latitude and longitude were swapped in submission — auto-corrected)</span>
-              )}
+              <b>Note:</b> Latitude and longitude were swapped in the original submission and auto-corrected.
             </div>
           )}
         </Section>

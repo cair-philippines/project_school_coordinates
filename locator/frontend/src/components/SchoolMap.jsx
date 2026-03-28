@@ -15,26 +15,68 @@ const PH_CENTER = [12.5, 122.0];
 const PH_ZOOM = 6;
 
 /**
- * PSGC-aware marker colors:
- *   Green — public, psgc_match
- *   Blue  — private, psgc_match
- *   Green pulsing — public, psgc_mismatch
- *   Blue pulsing  — private, psgc_mismatch
- *   Gray  — either sector, psgc_no_validation
+ * Coord-status-aware marker visuals:
+ *
+ * CONFIDENT (coord_status = valid or fixed_swap):
+ *   Solid green dot — public
+ *   Solid blue dot — private
+ *
+ * SUSPECT — wrong_municipality or round_coordinates:
+ *   Green/blue dot + static orange ring
+ *
+ * SUSPECT — outside_all_polygons:
+ *   Green/blue dot + pulsing red ring (most severe)
+ *
+ * SUSPECT — placeholder_default or coordinate_cluster:
+ *   Green/blue dot + red X overlay (known fake)
+ *
+ * NO COORD_STATUS or psgc_no_validation only:
+ *   Gray dot
  */
 function createIcon(school) {
-  const validation = school.psgc_validation;
+  const sectorColor = school.sector === "public" ? "#22c55e" : "#3b82f6";
+  const status = school.coord_status;
+  const reason = school.coord_rejection_reason;
 
-  if (validation === "psgc_mismatch") {
-    const color = school.sector === "public" ? "#22c55e" : "#3b82f6";
-    const rgbaColor = school.sector === "public" ? "rgba(34,197,94,0.4)" : "rgba(59,130,246,0.4)";
+  // Known fake coordinates — red X overlay
+  if (status === "suspect" && (reason === "placeholder_default" || reason === "coordinate_cluster")) {
     return L.divIcon({
       className: "",
       html: `<div style="position:relative; width:16px; height:16px;">
         <div style="
           position:absolute; top:2px; left:2px;
           width:12px; height:12px;
-          background:${color};
+          background:${sectorColor};
+          border:2px solid white;
+          border-radius:50%;
+          box-shadow:0 2px 4px rgba(0,0,0,0.3);
+          z-index:2;
+        "></div>
+        <div style="
+          position:absolute; top:1px; left:1px;
+          width:14px; height:14px;
+          z-index:3;
+          display:flex; align-items:center; justify-content:center;
+          font-size:12px; font-weight:900; color:#ef4444;
+          text-shadow:0 0 2px white, 0 0 2px white;
+          line-height:1;
+        ">&times;</div>
+      </div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+      popupAnchor: [0, -10],
+    });
+  }
+
+  // Over water / outside all polygons — pulsing red ring (most severe)
+  if (status === "suspect" && reason === "outside_all_polygons") {
+    return L.divIcon({
+      className: "",
+      html: `<div style="position:relative; width:16px; height:16px;">
+        <div style="
+          position:absolute; top:2px; left:2px;
+          width:12px; height:12px;
+          background:${sectorColor};
           border:2px solid white;
           border-radius:50%;
           box-shadow:0 2px 4px rgba(0,0,0,0.3);
@@ -44,7 +86,7 @@ function createIcon(school) {
           position:absolute; top:0; left:0;
           width:16px; height:16px;
           border-radius:50%;
-          background:${rgbaColor};
+          background:rgba(239,68,68,0.4);
           animation:pulse-ring 2s ease-out infinite;
         "></div>
       </div>`,
@@ -54,19 +96,57 @@ function createIcon(school) {
     });
   }
 
-  let color;
-  if (validation === "psgc_match") {
-    color = school.sector === "public" ? "#22c55e" : "#3b82f6";
-  } else {
-    // psgc_no_validation or null
-    color = "#9ca3b8";
+  // Wrong municipality or round coordinates — static orange ring
+  if (status === "suspect" && (reason === "wrong_municipality" || reason === "round_coordinates")) {
+    return L.divIcon({
+      className: "",
+      html: `<div style="position:relative; width:16px; height:16px;">
+        <div style="
+          position:absolute; top:2px; left:2px;
+          width:12px; height:12px;
+          background:${sectorColor};
+          border:2px solid white;
+          border-radius:50%;
+          box-shadow:0 2px 4px rgba(0,0,0,0.3);
+          z-index:2;
+        "></div>
+        <div style="
+          position:absolute; top:0; left:0;
+          width:16px; height:16px;
+          border-radius:50%;
+          border:2px solid #f97316;
+          opacity:0.7;
+        "></div>
+      </div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+      popupAnchor: [0, -10],
+    });
   }
 
+  // Confident — solid dot
+  if (status === "valid" || status === "fixed_swap") {
+    return L.divIcon({
+      className: "",
+      html: `<div style="
+        width:12px; height:12px;
+        background:${sectorColor};
+        border:2px solid white;
+        border-radius:50%;
+        box-shadow:0 2px 4px rgba(0,0,0,0.3);
+      "></div>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+      popupAnchor: [0, -8],
+    });
+  }
+
+  // Fallback: gray dot (no coord_status, or unknown)
   return L.divIcon({
     className: "",
     html: `<div style="
       width:12px; height:12px;
-      background:${color};
+      background:#9ca3b8;
       border:2px solid white;
       border-radius:50%;
       box-shadow:0 2px 4px rgba(0,0,0,0.3);
@@ -224,11 +304,9 @@ function capMarkers(withCoords) {
  * Visually distinct from regular markers — signals "click me for details."
  */
 function createSelectedIcon(school) {
-  const validation = school.psgc_validation;
+  const status = school.coord_status;
   let color;
-  if (validation === "psgc_mismatch") {
-    color = school.sector === "public" ? "#22c55e" : "#3b82f6";
-  } else if (validation === "psgc_match") {
+  if (status === "valid" || status === "fixed_swap" || status === "suspect") {
     color = school.sector === "public" ? "#22c55e" : "#3b82f6";
   } else {
     color = "#9ca3b8";

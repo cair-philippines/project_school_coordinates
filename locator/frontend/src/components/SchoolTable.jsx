@@ -3,7 +3,9 @@ import { MapPin, AlertCircle, ArrowUp, ArrowDown } from "lucide-react";
 
 function StatusDot({ school }) {
   const hasCoords = school.latitude != null;
-  const validation = school.psgc_validation;
+  const status = school.coord_status;
+  const reason = school.coord_rejection_reason;
+  const dotColor = school.sector === "public" ? "bg-green-500" : "bg-blue-500";
 
   if (!hasCoords) {
     return (
@@ -14,24 +16,44 @@ function StatusDot({ school }) {
     );
   }
 
-  if (validation === "psgc_match") {
-    const color = school.sector === "public" ? "bg-green-500" : "bg-blue-500";
-    return <span className={`inline-block h-2.5 w-2.5 rounded-full ${color}`} title="Validated" />;
+  // Known fake — red X
+  if (status === "suspect" && (reason === "placeholder_default" || reason === "coordinate_cluster")) {
+    return (
+      <span className="relative inline-flex items-center justify-center h-3.5 w-3.5" title="Fake coordinate">
+        <span className={`absolute inset-0.5 rounded-full ${dotColor}`} />
+        <span className="relative text-[10px] font-black text-red-500 leading-none" style={{textShadow: "0 0 1px white"}}>×</span>
+      </span>
+    );
   }
 
-  if (validation === "psgc_mismatch") {
-    const dotColor = school.sector === "public" ? "bg-green-500" : "bg-blue-500";
-    const pingColor = school.sector === "public" ? "bg-green-400" : "bg-blue-400";
+  // Over water — pulsing red ring
+  if (status === "suspect" && reason === "outside_all_polygons") {
+    const pingColor = "bg-red-400";
     return (
-      <span className="relative inline-block h-2.5 w-2.5">
+      <span className="relative inline-block h-2.5 w-2.5" title="Outside all polygons">
         <span className={`absolute inset-0 rounded-full ${dotColor}`} />
         <span className={`absolute inset-0 rounded-full ${pingColor} animate-ping opacity-50`} />
       </span>
     );
   }
 
-  // psgc_no_validation
-  return <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-400" title="Unvalidated" />;
+  // Wrong municipality or round coords — static orange ring
+  if (status === "suspect" && (reason === "wrong_municipality" || reason === "round_coordinates")) {
+    return (
+      <span className="relative inline-block h-3 w-3" title="Suspect location">
+        <span className={`absolute inset-0.5 rounded-full ${dotColor}`} />
+        <span className="absolute inset-0 rounded-full border-2 border-orange-400 opacity-70" />
+      </span>
+    );
+  }
+
+  // Confident — solid dot
+  if (status === "valid" || status === "fixed_swap") {
+    return <span className={`inline-block h-2.5 w-2.5 rounded-full ${dotColor}`} title="Validated" />;
+  }
+
+  // Fallback: gray
+  return <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-400" title="Unknown status" />;
 }
 
 function ValidationBadge({ validation }) {
