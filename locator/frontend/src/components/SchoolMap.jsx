@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, LayersControl } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import MapLegend from "./MapLegend";
 
 // Fix default marker icons in bundled environments
 delete L.Icon.Default.prototype._getIconUrl;
@@ -360,6 +361,7 @@ export default function SchoolMap({ schools, selectedSchool, onOpenDetail, mode 
   }, [allWithCoords]);
 
   return (
+    <div className="h-full w-full relative">
     <MapContainer
       center={PH_CENTER}
       zoom={PH_ZOOM}
@@ -416,20 +418,21 @@ export default function SchoolMap({ schools, selectedSchool, onOpenDetail, mode 
                     </span>
                   </div>
                   <div className="mt-2 text-xs text-gray-600 space-y-0.5">
-                    {school.barangay && <div>Brgy. {school.barangay}</div>}
-                    {school.municipality && <div>{school.municipality}</div>}
-                    {school.province && <div>{school.province}</div>}
-                    {school.region && <div>{school.region}</div>}
+                    {school.barangay && <div><span className="text-gray-400">Barangay:</span> {school.barangay}</div>}
+                    {school.municipality && <div><span className="text-gray-400">City/Muni:</span> {school.municipality}</div>}
+                    {school.province && <div><span className="text-gray-400">Province:</span> {school.province}</div>}
+                    {school.region && <div><span className="text-gray-400">Region:</span> {school.region}</div>}
                   </div>
                   <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400 space-y-0.5">
                     <div>{school.latitude?.toFixed(6)}, {school.longitude?.toFixed(6)}</div>
                     {school.coord_source && <div>Source: {school.coord_source}</div>}
-                    {school.enrollment_status && (
-                      <div className={school.enrollment_status === "active" ? "text-green-600" : "text-amber-600"}>
-                        Enrollment: {school.enrollment_status.replace(/_/g, " ")}
-                      </div>
-                    )}
                   </div>
+                  <button
+                    onClick={() => onOpenDetail(school)}
+                    className="mt-2 w-full text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 border-t border-gray-100 transition-colors"
+                  >
+                    View Details →
+                  </button>
                 </div>
               </Popup>
             )}
@@ -437,5 +440,7 @@ export default function SchoolMap({ schools, selectedSchool, onOpenDetail, mode 
         );
       })}
     </MapContainer>
+    <MapLegend />
+    </div>
   );
 }

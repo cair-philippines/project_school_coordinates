@@ -10,11 +10,15 @@ LOCATION_COLS = ["region", "province", "municipality", "barangay"]
 
 def _title_case(val):
     """Normalize location strings to title case for display consistency."""
+    import re
     if not val or not isinstance(val, str):
         return val
     val = val.strip()
     if not val:
         return None
+    # Normalize whitespace: collapse multiple spaces, fix comma spacing
+    val = re.sub(r'\s+', ' ', val)
+    val = re.sub(r'\s*,\s*', ', ', val)
     # Preserve known all-caps abbreviations
     KEEP_UPPER = {"NCR", "CAR", "BARMM", "NIR", "CARAGA", "MIMAROPA"}
     if val.upper() in KEEP_UPPER:

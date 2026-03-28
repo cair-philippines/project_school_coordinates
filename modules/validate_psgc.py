@@ -215,7 +215,22 @@ def validate_municipality(df, project_root="."):
         subset = df.loc[both_muni].copy()
         claimed_7 = subset["psgc_municity"].str[:7]
         observed_7 = subset["psgc_observed_municity"].str[:7]
-        mismatch_idx = subset.index[claimed_7.values != observed_7.values]
+
+        # Direct 7-digit comparison
+        direct_match = claimed_7.values == observed_7.values
+
+        # NCR normalization: the PSGC Excel uses sub-district codes for NCR
+        # cities (e.g., 1380601 = Manila District 1) while the shapefile uses
+        # city-level codes ending in 00 (e.g., 1380600 = City of Manila).
+        # Treat as a match if they share the same first 5 digits (province)
+        # and one side ends in 00 (city-level code).
+        province_match = claimed_7.str[:5].values == observed_7.str[:5].values
+        observed_is_city = observed_7.str[5:7].values == "00"
+        claimed_is_city = claimed_7.str[5:7].values == "00"
+        ncr_match = province_match & (observed_is_city | claimed_is_city)
+
+        normalized_match = direct_match | ncr_match
+        mismatch_idx = subset.index[~normalized_match]
 
         if len(mismatch_idx) > 0:
             # Second-chance check: are these schools near a municipal boundary?

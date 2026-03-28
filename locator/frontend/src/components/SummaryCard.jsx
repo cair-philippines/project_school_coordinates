@@ -137,41 +137,15 @@ export default function SummaryCard({ activeFilters }) {
           icon={Building2}
           label="Public"
           value={summary.public.toLocaleString()}
-          color="text-blue-600"
+          color="text-green-600"
         />
         <Stat
           icon={Building2}
           label="Private"
           value={summary.private.toLocaleString()}
-          color="text-pink-600"
-        />
-        <Stat
-          icon={Users}
-          label="Active Enrollment"
-          value={summary.active_enrollment.toLocaleString()}
-          color="text-emerald-600"
-        />
-        <Stat
-          icon={Users}
-          label="No Enrollment"
-          value={summary.no_enrollment_reported.toLocaleString()}
-          color="text-amber-600"
+          color="text-blue-600"
         />
       </div>
-
-      {summary.gastpe && (summary.gastpe.esc > 0 || summary.gastpe.shsvp > 0) && (
-        <div className="space-y-1">
-          <div className="text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide flex items-center gap-1">
-            <GraduationCap className="h-3 w-3" />
-            GASTPE (Private)
-          </div>
-          <div className="flex gap-3 text-xs">
-            <span>ESC: <b>{summary.gastpe.esc.toLocaleString()}</b></span>
-            <span>SHS VP: <b>{summary.gastpe.shsvp.toLocaleString()}</b></span>
-            <span>JDVP: <b>{summary.gastpe.jdvp.toLocaleString()}</b></span>
-          </div>
-        </div>
-      )}
 
       <SourceBar sources={summary.coord_sources} />
     </div>
