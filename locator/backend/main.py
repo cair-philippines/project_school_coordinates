@@ -217,9 +217,9 @@ def get_summary(
     shsvp = sum(1 for s in private if s.get("shsvp_participating") == 1)
     jdvp = sum(1 for s in private if s.get("jdvp_participating") == 1)
 
-    # Coord status breakdown (private schools)
+    # Coord status breakdown (all schools)
     coord_status = {}
-    for s in private:
+    for s in results:
         st = s.get("coord_status") or "unknown"
         coord_status[st] = coord_status.get(st, 0) + 1
 

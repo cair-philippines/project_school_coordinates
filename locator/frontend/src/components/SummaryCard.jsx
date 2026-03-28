@@ -78,6 +78,61 @@ function SourceBar({ sources }) {
   );
 }
 
+function StatusBar({ statuses }) {
+  if (!statuses || Object.keys(statuses).length === 0) return null;
+  const total = Object.values(statuses).reduce((a, b) => a + b, 0);
+  const colors = {
+    valid: "#22c55e",
+    fixed_swap: "#22c55e",
+    suspect: "#f97316",
+    no_coords: "#d1d5db",
+    unknown: "#94a3b8",
+  };
+  const labels = {
+    valid: "Valid",
+    fixed_swap: "Fixed swap",
+    suspect: "Suspect",
+    no_coords: "No coords",
+    unknown: "Unknown",
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide flex items-center gap-1">
+        <MapPin className="h-3 w-3" />
+        Coordinate Status
+      </div>
+      <div className="flex h-2 rounded-full overflow-hidden bg-gray-100">
+        {Object.entries(statuses)
+          .sort(([, a], [, b]) => b - a)
+          .map(([st, count]) => (
+            <div
+              key={st}
+              style={{
+                width: `${(count / total) * 100}%`,
+                backgroundColor: colors[st] || "#94a3b8",
+              }}
+              title={`${labels[st] || st}: ${count.toLocaleString()}`}
+            />
+          ))}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+        {Object.entries(statuses)
+          .sort(([, a], [, b]) => b - a)
+          .map(([st, count]) => (
+            <div key={st} className="flex items-center gap-1 text-[10px] text-[var(--muted-foreground)]">
+              <div
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: colors[st] || "#94a3b8" }}
+              />
+              {labels[st] || st}: {count.toLocaleString()}
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SummaryCard({ activeFilters }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -119,7 +174,7 @@ export default function SummaryCard({ activeFilters }) {
     .join(", ");
 
   return (
-    <div className="p-3 border-b border-[var(--border)] bg-gradient-to-b from-[var(--accent)] to-[var(--card)] space-y-3">
+    <div className="p-3 bg-gradient-to-b from-[var(--accent)] to-[var(--card)] space-y-3">
       <div className="text-xs font-medium text-[var(--muted-foreground)]">
         {label || "Summary"}
       </div>
@@ -147,6 +202,7 @@ export default function SummaryCard({ activeFilters }) {
         />
       </div>
 
+      <StatusBar statuses={summary.coord_status} />
       <SourceBar sources={summary.coord_sources} />
     </div>
   );

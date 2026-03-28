@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MapPin, Map, Table2 } from "lucide-react";
+import { MapPin, Map, Table2, BarChart3, List } from "lucide-react";
 import SearchBar from "./components/SearchBar";
 import SchoolMap from "./components/SchoolMap";
 import SchoolTable from "./components/SchoolTable";
@@ -38,6 +38,7 @@ function App() {
   const [flyToTrigger, setFlyToTrigger] = useState(0); // incremented to force map fly-to
   const [searchClearSignal, setSearchClearSignal] = useState(0);
   const [viewMode, setViewMode] = useState("map"); // "map" or "table"
+  const [sidebarTab, setSidebarTab] = useState("schools"); // "schools" or "overview"
 
   // Tracks whether filter change was programmatic (from clearing) vs user-initiated
   const filterChangeIsReset = useRef(false);
@@ -188,15 +189,50 @@ function App() {
             fetchFilters={fetchFilters}
             filters={filters}
           />
-          {mode === "filter" && <SummaryCard activeFilters={activeFilters} />}
+
+          {/* Sidebar tabs */}
+          {mode === "filter" && (
+            <div className="flex border-b border-[var(--border)] shrink-0">
+              <button
+                onClick={() => setSidebarTab("schools")}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
+                  sidebarTab === "schools"
+                    ? "text-[var(--foreground)] border-b-2 border-[var(--primary)]"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                <List className="h-3.5 w-3.5" />
+                Schools
+              </button>
+              <button
+                onClick={() => setSidebarTab("overview")}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
+                  sidebarTab === "overview"
+                    ? "text-[var(--foreground)] border-b-2 border-[var(--primary)]"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                Overview
+              </button>
+            </div>
+          )}
+
+          {/* Sidebar content */}
           <div className="flex-1 min-h-0 overflow-hidden">
-            <ResultsList
-              results={mode !== "idle" ? results : []}
-              total={mode !== "idle" ? total : 0}
-              loading={loading}
-              onSelect={handleSelectFromList}
-              selectedId={selectedSchool?.school_id}
-            />
+            {mode === "filter" && sidebarTab === "overview" ? (
+              <div className="overflow-y-auto h-full">
+                <SummaryCard activeFilters={activeFilters} />
+              </div>
+            ) : (
+              <ResultsList
+                results={mode !== "idle" ? results : []}
+                total={mode !== "idle" ? total : 0}
+                loading={loading}
+                onSelect={handleSelectFromList}
+                selectedId={selectedSchool?.school_id}
+              />
+            )}
           </div>
         </aside>
 
