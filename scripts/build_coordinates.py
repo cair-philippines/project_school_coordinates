@@ -498,8 +498,8 @@ def write_output(result, crosswalk, report_text):
         {"field": "coord_source", "value": "Which source provided the coordinates (see Coordinate Sources below)"},
         {"field": "monitoring_chosen_source", "value": "If coord_source=monitoring_validated: which sub-source the validator chose (OSMapaaralan, NSBI, or New coordinates). Null otherwise."},
         {"field": "sources_available", "value": "Comma-separated list of all sources that had coordinates for this school. 'enrollment_only' if school is only known from enrollment data."},
-        {"field": "coord_status", "value": "Coordinate quality: 'valid' (in correct municipality), 'suspect' (over water or wrong municipality), or 'no_coords' (no coordinate source)."},
-        {"field": "coord_rejection_reason", "value": "If suspect: 'over_water' (outside all land polygons) or 'wrong_municipality' (in different municipality than declared). Null otherwise."},
+        {"field": "coord_status", "value": "Coordinate quality: 'valid' (in correct municipality), 'suspect' (outside all polygons or wrong municipality), or 'no_coords' (no coordinate source)."},
+        {"field": "coord_rejection_reason", "value": "If suspect: 'outside_all_polygons' (outside all land polygons) or 'wrong_municipality' (in different municipality than declared). Null otherwise."},
         {"field": "region", "value": "DepEd administrative region (NIR-aware, from enrollment file)"},
         {"field": "old_region", "value": "DepEd region (pre-NIR naming; Negros Occidental in Region VI, Negros Oriental/Siquijor in Region VII)"},
         {"field": "province", "value": "Province (from best available source)"},
@@ -640,7 +640,7 @@ def append_psgc(result):
     print("\nSpatial validation (point-in-polygon)...")
     result = validate_psgc.spatial_lookup(root, result)
     result = validate_psgc.validate(result)
-    result = validate_psgc.validate_municipality(result)
+    result = validate_psgc.validate_municipality(result, project_root=root)
 
     return result
 

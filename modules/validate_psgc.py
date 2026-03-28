@@ -4,15 +4,22 @@ Two levels of validation:
 1. Barangay-level: tests whether coordinates fall within claimed PSGC barangay
    (psgc_match / psgc_mismatch / psgc_no_validation — metadata only)
 2. Municipal-level: tests whether coordinates fall within declared municipality,
-   flags schools that are in the wrong municipality or over water as suspect
+   flags schools as suspect if outside all polygons or in the wrong municipality.
+   Uses a 200m buffer on polygons to account for GPS inaccuracy and coastal schools.
 """
 
 import pandas as pd
+import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point
 from pathlib import Path
 
 SHAPEFILE_PATH = "data/modified/phl_admbnda_adm4_updated/phl_admbnda_adm4_updated.shp"
+
+# Buffer distance in degrees (~200m at Philippine latitudes) for the
+# municipal validation. Accounts for GPS inaccuracy, coastal schools on
+# reclaimed land/piers, and polygon precision gaps at rivers/boundaries.
+BOUNDARY_BUFFER_DEG = 0.002
 
 
 def _load_shapefile(project_root):
@@ -20,7 +27,7 @@ def _load_shapefile(project_root):
     shp_path = Path(project_root) / SHAPEFILE_PATH
     gdf = gpd.read_file(shp_path)
 
-    # Strip 'PH' prefix from PSGC codes to get pure 10-digit numeric
+    # Strip 'PH' prefix from PSGC codes to get pure numeric strings
     for col in ["ADM4_PCODE", "ADM3_PCODE", "ADM2_PCODE", "ADM1_PCODE"]:
         gdf[col] = gdf[col].str.replace("PH", "", regex=False)
 
@@ -44,9 +51,10 @@ def spatial_lookup(project_root, df):
     -------
     pd.DataFrame
         Input DataFrame with new columns:
-        - psgc_observed_barangay: 10-digit barangay code from polygon
-        - psgc_observed_municity: municipality code from polygon (first 7 digits + 000)
-        Both are None if the point falls outside all polygons (over water).
+        - psgc_observed_barangay: 10-digit barangay PSGC code from polygon
+        - psgc_observed_municity: 7-digit municipality PSGC code from polygon
+          (e.g., "0102906", not 10-digit)
+        Both are None if the point falls outside all polygons.
     """
     print("  Loading shapefile...")
     gdf = _load_shapefile(project_root)
@@ -90,9 +98,9 @@ def spatial_lookup(project_root, df):
     df["psgc_observed_municity"] = df["school_id"].map(lookup_muni)
 
     matched = df["psgc_observed_barangay"].notna().sum()
-    over_water = has_coords.sum() - matched
+    outside = has_coords.sum() - matched
     print(f"  Matched to polygon: {matched:,}")
-    print(f"  Outside all polygons (over water/unmapped): {over_water:,}")
+    print(f"  Outside all polygons: {outside:,}")
 
     return df
 
@@ -141,29 +149,30 @@ def validate(df):
     return df
 
 
-def validate_municipality(df):
+def validate_municipality(df, project_root="."):
     """Municipal-level coordinate validation.
 
     Flags schools whose coordinates fall in the wrong municipality or
-    outside all polygons (over water). Updates coord_status to 'suspect'
-    for flagged schools.
+    outside all polygons. Updates coord_status to 'suspect' for flagged
+    schools.
 
-    Two checks:
-    1. Over water: school has coordinates but falls outside all polygons
-    2. Wrong municipality: school's observed municipality differs from
-       its claimed psgc_municity
+    For wrong-municipality detection, the initial point-in-polygon uses
+    exact polygon boundaries. Schools that fail the exact check get a
+    second chance with a 200m buffered boundary to account for GPS
+    inaccuracy and coastal/riverfront positions. Only schools that fail
+    BOTH checks are flagged.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Must have columns: latitude, longitude, coord_status,
-        coord_rejection_reason, psgc_municity (claimed),
+        Must have columns: latitude, longitude, psgc_municity (claimed),
         psgc_observed_municity (from spatial_lookup).
 
     Returns
     -------
     pd.DataFrame
-        Input DataFrame with coord_status updated for flagged schools.
+        Input DataFrame with coord_status and coord_rejection_reason
+        updated for flagged schools.
     """
     has_coords = df["latitude"].notna() & df["longitude"].notna()
 
@@ -172,44 +181,93 @@ def validate_municipality(df):
         df["coord_status"] = None
         df.loc[has_coords, "coord_status"] = "valid"
         df.loc[~has_coords, "coord_status"] = "no_coords"
+        # For public schools without coords, set a generic reason
+        df.loc[~has_coords & df["coord_status"].eq("no_coords"), "coord_rejection_reason"] = "no_coordinate_source"
     if "coord_rejection_reason" not in df.columns:
         df["coord_rejection_reason"] = None
 
     # Only check schools that currently have valid or fixed_swap status
     checkable = has_coords & df["coord_status"].isin(["valid", "fixed_swap"])
 
-    # Check 1: Over water — has coordinates but no polygon match
+    # Check 1: Outside all polygons — has coordinates but no polygon match
     no_polygon = checkable & df["psgc_observed_municity"].isna()
-    n_water = int(no_polygon.sum())
-    if n_water > 0:
+    n_outside = int(no_polygon.sum())
+    if n_outside > 0:
         df.loc[no_polygon, "coord_status"] = "suspect"
-        df.loc[no_polygon, "coord_rejection_reason"] = "over_water"
+        df.loc[no_polygon, "coord_rejection_reason"] = "outside_all_polygons"
+
+    # Refresh checkable after Check 1
+    checkable = has_coords & df["coord_status"].isin(["valid", "fixed_swap"])
 
     # Check 2: Wrong municipality — observed municipality differs from claimed
     has_claimed_muni = df["psgc_municity"].notna() & (df["psgc_municity"] != "None")
     has_observed_muni = df["psgc_observed_municity"].notna()
 
-    # Extract municipality portion from PSGC codes for comparison
-    # psgc_municity is 10-digit (e.g., 0102906000), ADM3_PCODE is 7-digit (e.g., 0102906)
-    # Normalize both to 7-digit municipality code
+    # Compare 7-digit municipal codes
+    # psgc_municity is 10-digit (e.g., "0102906000"), psgc_observed_municity
+    # is 7-digit (e.g., "0102906"). Truncate claimed to 7 digits.
     both_muni = checkable & has_claimed_muni & has_observed_muni
+    n_wrong = 0
+    n_boundary = 0
+    n_skipped_no_psgc = int((checkable & ~has_claimed_muni & has_observed_muni).sum())
+
     if both_muni.any():
         subset = df.loc[both_muni].copy()
         claimed_7 = subset["psgc_municity"].str[:7]
         observed_7 = subset["psgc_observed_municity"].str[:7]
         mismatch_idx = subset.index[claimed_7.values != observed_7.values]
-        # Don't double-flag schools already marked as suspect (e.g., over_water)
-        wrong_muni = df.index.isin(mismatch_idx) & (df["coord_status"] != "suspect")
-        n_wrong = int(wrong_muni.sum())
-        if n_wrong > 0:
-            df.loc[wrong_muni, "coord_status"] = "suspect"
-            df.loc[wrong_muni, "coord_rejection_reason"] = "wrong_municipality"
-    else:
-        n_wrong = 0
+
+        if len(mismatch_idx) > 0:
+            # Second-chance check: are these schools near a municipal boundary?
+            # Use the claimed municipality's polygon with a buffer.
+            # If the school falls within the buffered boundary, it's likely
+            # GPS inaccuracy — don't flag it.
+            from shapely.ops import unary_union
+
+            mismatch_schools = df.loc[mismatch_idx].copy()
+            gdf = _load_shapefile(project_root)
+
+            # Build buffered municipal polygons for each claimed municipality
+            confirmed_mismatch = []
+            for claimed_code in mismatch_schools["psgc_municity"].str[:7].unique():
+                # Find all barangay polygons in this municipality
+                muni_polys = gdf[gdf["ADM3_PCODE"] == claimed_code]
+                if len(muni_polys) == 0:
+                    # Municipality not in shapefile — can't buffer-check
+                    schools_in_muni = mismatch_schools[
+                        mismatch_schools["psgc_municity"].str[:7] == claimed_code
+                    ]
+                    confirmed_mismatch.extend(schools_in_muni.index.tolist())
+                    continue
+
+                # Dissolve barangays to municipal boundary and buffer
+                muni_boundary = unary_union(muni_polys.geometry)
+                buffered = muni_boundary.buffer(BOUNDARY_BUFFER_DEG)
+
+                # Check which mismatched schools in this municipality fall
+                # within the buffered boundary
+                schools_in_muni = mismatch_schools[
+                    mismatch_schools["psgc_municity"].str[:7] == claimed_code
+                ]
+                for idx, row in schools_in_muni.iterrows():
+                    pt = Point(row["longitude"], row["latitude"])
+                    if not buffered.contains(pt):
+                        confirmed_mismatch.append(idx)
+                    else:
+                        n_boundary += 1
+
+            # Flag confirmed mismatches (not near boundary)
+            wrong_muni = df.index.isin(confirmed_mismatch) & (df["coord_status"] != "suspect")
+            n_wrong = int(wrong_muni.sum())
+            if n_wrong > 0:
+                df.loc[wrong_muni, "coord_status"] = "suspect"
+                df.loc[wrong_muni, "coord_rejection_reason"] = "wrong_municipality"
 
     print(f"\n  Municipal-level validation:")
-    print(f"    Over water / outside all polygons: {n_water:,}")
-    print(f"    Wrong municipality:                {n_wrong:,}")
-    print(f"    Total newly flagged as suspect:    {n_water + n_wrong:,}")
+    print(f"    Outside all polygons:              {n_outside:,}")
+    print(f"    Wrong municipality (confirmed):    {n_wrong:,}")
+    print(f"    Near boundary (not flagged):        {n_boundary:,}")
+    print(f"    Skipped (no PSGC municipality):     {n_skipped_no_psgc:,}")
+    print(f"    Total newly flagged as suspect:     {n_outside + n_wrong:,}")
 
     return df

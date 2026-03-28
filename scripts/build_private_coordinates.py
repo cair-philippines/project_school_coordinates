@@ -430,7 +430,7 @@ def append_psgc(result):
     print("\nSpatial validation (point-in-polygon)...")
     result = validate_psgc.spatial_lookup(root, result)
     result = validate_psgc.validate(result)
-    result = validate_psgc.validate_municipality(result)
+    result = validate_psgc.validate_municipality(result, project_root=root)
 
     return result
 
