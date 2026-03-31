@@ -48,7 +48,7 @@ Two separate pipelines address the distinct challenges of each sector:
 
 ## Output
 
-### Public Schools — 48,436 schools (46,270 valid coords, 1,604 suspect coords, 562 no coords)
+### Public Schools — 48,436 schools (46,589 valid coords, 1,285 suspect coords, 562 no coords)
 
 | File | Description |
 |---|---|
@@ -58,7 +58,7 @@ Two separate pipelines address the distinct challenges of each sector:
 | `data/modified/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
 | `output/build_public_report.txt` | Pipeline run summary and statistics |
 
-### Private Schools — 12,167 schools (7,510 valid coords, 1,318 suspect coords, 3,253 no coords)
+### Private Schools — 12,167 schools (7,623 valid coords, 1,204 suspect coords, 87 fixed swap, 3,253 no coords)
 
 | File | Description |
 |---|---|

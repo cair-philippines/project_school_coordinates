@@ -4,14 +4,26 @@ Interactive web application for searching and visualizing Philippine public and 
 
 ## Features
 
-- **Search** — debounced type-ahead search by school name or ID with ranked results (exact ID > starts-with > contains); matching schools appear as passive markers on the map without auto-zooming; map flies to a school only when explicitly clicked
+- **Search** — debounced type-ahead search by school name or ID with ranked results (exact ID > starts-with > contains); matching schools appear as passive markers on the map without auto-zooming; map flies to a school only when the user explicitly clicks one in the dropdown
+- **Non-intrusive school selection** — selecting a school (via search or results list) highlights it with an enlarged marker + pulsing ring + "i" badge. Clicking the enlarged marker opens the detail panel. The detail panel does not auto-open.
 - **Cascading location filters** — Region → Province → Municipality → Barangay dropdowns with exact matching; map auto-zooms to the selected area
-- **Summary cards** — when a location filter is active, shows total schools, public/private split, coordinate coverage %, enrollment status, GASTPE participation, and coordinate source breakdown bar
-- **Interactive map** — Leaflet map with CARTO light basemap, PSGC-aware colored markers (green=public validated, blue=private validated, red pulsing=misplaced, gray=unvalidated), context-aware zoom, proportional sector sampling, IQR-based outlier-robust bounds
+- **Sidebar tabs** — when a location filter is active, the left sidebar has two tabs:
+  - **Schools** — scrollable results list with school name, location, sector, and coordinate status badges
+  - **Overview** — summary stats: total schools, public/private split, coordinate coverage %, coordinate status distribution bar (valid/suspect/no coords), and coordinate sources bar
+- **Interactive map** — Leaflet map with three base layers (Light, OpenStreetMap, Satellite), coord-status-aware colored markers, context-aware zoom, proportional sector sampling, IQR-based outlier-robust bounds
+- **Coord-status-aware markers** — 5 distinct visual indicators:
+  - Solid green dot — public school, valid coordinates
+  - Solid blue dot — private school, valid coordinates
+  - Green/blue dot + static orange ring — wrong municipality or round coordinates (needs investigation)
+  - Green/blue dot + pulsing red ring — outside all polygons (almost certainly wrong)
+  - Green/blue dot + red X — known fake coordinate (placeholder default or cluster)
+  - Gray dot — unknown coord_status
+- **Map legend** — collapsible legend in the bottom-left corner showing all dot visual types
 - **Table view** — togglable tabular view showing all matching schools including those without coordinates (invisible on the map). Sortable columns (click header to cycle asc/desc/clear): ID, name, sector, municipality, province, region, coord status, PSGC validation, enrollment status. Click a row to locate on the map (or zoom to locality if no coordinates).
-- **Results sidebar** — scrollable list of all matching schools, showing school name, location, sector, and coordinate status badges
-- **School detail panel** — slide-out panel with full school profile: location hierarchy, coordinate lineage (source, trust level, validator notes), GASTPE flags, enrollment status
+- **School popups** — clicking a school dot shows a popup with labeled fields (Barangay, City/Muni, Province, Region), coordinates, and source. Includes a "View Details →" link to open the full detail panel.
+- **School detail panel** — overlay panel with full school profile: location hierarchy, coordinate lineage (source, trust level, validator notes), suspect coordinate alert with plain-English explanation, GASTPE flags, enrollment status
 - **Coordinate lineage inspector** — for each school, shows which source provided coordinates, trust level, available sources, and for monitoring-validated schools, which sub-source the validator chose
+- **Base map toggle** — three tile layers: Light (CARTO, default), OpenStreetMap, and Satellite (Esri World Imagery). Layers control at bottom-right.
 - **Stats bar** — live summary of total schools, public/private split, coordinate coverage, active enrollment
 
 ## Architecture
@@ -21,11 +33,12 @@ Browser
   └── React SPA (Vite + Tailwind)
         ├── SearchBar (debounced type-ahead)
         ├── FilterPanel (cascading dropdowns)
-        ├── SummaryCard (admin-level stats)
-        ├── SchoolMap (react-leaflet, PSGC-aware markers)
+        ├── SummaryCard (overview stats + status/source bars)
+        ├── SchoolMap (react-leaflet, coord-status markers, legend)
+        ├── MapLegend (collapsible dot visual reference)
         ├── SchoolTable (tabular view with data quality indicators)
         ├── ResultsList
-        ├── SchoolDetail (lineage inspector)
+        ├── SchoolDetail (lineage inspector + suspect alerts)
         └── StatsBar
               │
               ▼
@@ -40,7 +53,7 @@ Single container for deployment. The backend serves both the API and the built R
 | Layer | Technology |
 |---|---|
 | Frontend | React 19, Vite, Tailwind CSS v4, lucide-react |
-| Map | Leaflet + react-leaflet, CARTO Light basemap |
+| Map | Leaflet + react-leaflet, CARTO Light / OSM / Esri Satellite |
 | Backend | FastAPI, pandas, pyarrow |
 | Data | Parquet files from `data/modified/` |
 
@@ -79,6 +92,15 @@ npm run dev
 
 Visit `http://localhost:5173`. The Vite proxy forwards `/api/*` to the backend.
 
+### Deploying to Cloud Run
+
+```bash
+source /home/jupyter/google-cloud-sdk/path.bash.inc
+cd /workspace/project_coordinates/locator
+bash prepare_deploy.sh
+gcloud run deploy school-locator --source . --region asia-southeast1 --allow-unauthenticated --memory 1Gi --min-instances 0 --max-instances 2
+```
+
 ### Port Requirements
 
 The DS container's `docker-compose.yml` must expose ports 8000 and 5173:
@@ -98,7 +120,7 @@ ports:
 | `GET /api/schools/{school_id}` | Single school detail |
 | `GET /api/filters?region=&...` | Cascading filter options (exact match) |
 | `GET /api/stats` | Global summary statistics |
-| `GET /api/summary?region=&province=&...` | Admin-level summary (coord sources, GASTPE, enrollment) |
+| `GET /api/summary?region=&province=&...` | Admin-level summary (coord sources, coord status, enrollment) |
 
 ## Design Decisions
 
@@ -111,6 +133,12 @@ The app operates in one of three modes at a time, preventing state conflicts:
 
 Starting a search clears filters. Selecting a filter clears the search. This eliminates the class of bugs where stale state from one mode bleeds into another.
 
+### School Selection (Non-Intrusive)
+
+Selecting a school (via search dropdown, results list, or table row) does NOT auto-open the detail panel. Instead, the school's marker becomes enlarged with a pulsing ring and an "i" info badge. Clicking the enlarged marker opens the detail panel. Closing the detail panel keeps the map at the current position — it does not reset the view.
+
+This separation of `selectedSchool` (highlighted on map) from `detailSchool` (panel open) prevents the panel from obstructing the map and gives the user control over when to see details.
+
 ### Map View Controller
 
 The map's zoom behavior is managed by two independent effects:
@@ -122,7 +150,7 @@ These two effects don't interfere because they watch different signals. The fly-
 
 The map is always mounted (never unmounts when switching to table view). It's hidden with `opacity-0` and `pointer-events-none` behind the table, preserving the Leaflet instance and all its state. When clicking a school in the table, the map is revealed and the fly-to effect fires on the already-mounted map.
 
-**Key invariant**: `handleFilterChange`'s React callback dependencies must NOT include `selectedSchool`. Including it causes the callback to regenerate when a school is selected, which triggers FilterPanel's effect, which re-invokes the filter handler, which clears and re-fetches results, which triggers a bounds fit that overrides the fly-to. This was the root cause of a persistent bug where table-to-map school selection would zoom to the filter area instead of the school.
+**Key invariant**: `handleFilterChange`'s React callback dependencies must NOT include `selectedSchool`. Including it causes the callback to regenerate when a school is selected, which triggers FilterPanel's effect, which re-invokes the filter handler, which clears and re-fetches results, which triggers a bounds fit that overrides the fly-to.
 
 ### Location Filtering
 
@@ -131,7 +159,7 @@ All location filters use **case-insensitive exact matching** (not substring). Th
 - "CAR" matching CARAGA
 - "Alfonso" matching "Alfonso Castañeda"
 
-Location column values are normalized to consistent casing at data load time (title case for provinces/municipalities, preserved abbreviations for NCR, CAR, BARMM, etc.).
+Location column values are normalized at data load time: title case for provinces/municipalities, preserved abbreviations for NCR/CAR/BARMM, collapsed whitespace, and normalized comma spacing (fixes duplicate NCR province entries from inconsistent source formatting).
 
 ### Map Marker Capping
 
@@ -139,24 +167,32 @@ The map caps rendered markers at 3,000 for performance. When results exceed this
 
 Bounds calculation always uses the full (uncapped) result set to ensure correct zoom behavior.
 
-### PSGC-Aware Marker Colors
+### Coord-Status-Aware Markers
 
-Map markers reflect PSGC spatial validation status:
-- **Green dot** — public school with `psgc_match` (coordinates confirmed within claimed barangay)
-- **Blue dot** — private school with `psgc_match`
-- **Green pulsing dot** — public school with `psgc_mismatch` (coordinates fall in a different barangay than claimed)
-- **Blue pulsing dot** — private school with `psgc_mismatch`
-- **Gray dot** — either sector with `psgc_no_validation` (has coordinates but couldn't be validated)
+Map markers reflect `coord_status` and `coord_rejection_reason`:
 
-The pulsing animation uses the sector color (green/blue) so mismatched schools remain distinguishable by sector while the animation signals the coordinate discrepancy.
+| Visual | coord_status | coord_rejection_reason | Meaning |
+|---|---|---|---|
+| Solid green dot | `valid` / `fixed_swap` | — | Public school, confident coordinates |
+| Solid blue dot | `valid` / `fixed_swap` | — | Private school, confident coordinates |
+| Green/blue + orange ring | `suspect` | `wrong_municipality` or `round_coordinates` | Needs investigation |
+| Green/blue + pulsing red ring | `suspect` | `outside_all_polygons` | Almost certainly wrong (over water, outside land) |
+| Green/blue + red X | `suspect` | `placeholder_default` or `coordinate_cluster` | Known fake coordinate |
+| Gray dot | null/unknown | — | No coord_status data |
+
+The sector color (green=public, blue=private) is always visible as the center dot. The ring/X/pulse overlay indicates the severity and type of coordinate issue.
+
+### NCR Sub-District Normalization
+
+NCR cities have PSGC sub-district codes (e.g., `1380601` = Manila District 1) in the PSGC crosswalk, while the shapefile uses city-level codes (e.g., `1380600` = City of Manila). The municipal validation normalizes these: codes that share the same first 5 digits where one side ends in `00` are treated as matching. This prevents false `wrong_municipality` flags for all NCR schools. Verified: zero non-NCR schools are affected by this normalization.
 
 ### Table View
 
-A togglable tabular view that complements the map by showing **all** matching schools — including those without coordinates (invisible on the map). This surfaces data quality issues: schools with no coordinates, PSGC mismatches, and inactive enrollment.
+A togglable tabular view that complements the map by showing **all** matching schools — including those without coordinates (invisible on the map). This surfaces data quality issues: schools with no coordinates, suspect coordinates, and inactive enrollment.
 
 Clicking a row switches to map view and:
-- **If the school has coordinates** — flies to the school at zoom 16 and opens the detail panel
-- **If the school has no coordinates** — zooms to the school's municipality/province/region (best-effort locality zoom using other schools in the same area) and opens the detail panel
+- **If the school has coordinates** — flies to the school at zoom 16, highlights with enlarged marker
+- **If the school has no coordinates** — zooms to the school's municipality/province/region (best-effort locality zoom using other schools in the same area)
 
 ### Outlier-Robust Bounds
 
@@ -172,25 +208,27 @@ locator/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx            # Main layout + mode management
+│   │   ├── App.jsx            # Main layout + mode management + sidebar tabs
 │   │   ├── components/
 │   │   │   ├── SearchBar.jsx   # Debounced search with selection handling
 │   │   │   ├── FilterPanel.jsx # Cascading location dropdowns
-│   │   │   ├── SummaryCard.jsx # Admin-level summary stats
-│   │   │   ├── SchoolMap.jsx   # Leaflet map + PSGC-aware markers
-│   │   │   ├── SchoolTable.jsx  # Tabular view with data quality indicators
-│   │   │   ├── SchoolDetail.jsx # Slide-out detail + lineage inspector
-│   │   │   ├── ResultsList.jsx  # Sidebar results
+│   │   │   ├── SummaryCard.jsx # Overview stats + status/source bars
+│   │   │   ├── MapLegend.jsx   # Collapsible dot visual legend
+│   │   │   ├── SchoolMap.jsx   # Leaflet map + coord-status markers + legend
+│   │   │   ├── SchoolTable.jsx  # Tabular view with sortable columns
+│   │   │   ├── SchoolDetail.jsx # Detail panel + lineage + suspect alerts
+│   │   │   ├── ResultsList.jsx  # Sidebar results list
 │   │   │   └── StatsBar.jsx    # Global summary stats
 │   │   └── hooks/
 │   │       └── useSchools.js   # API client
 │   ├── package.json
 │   └── vite.config.js
+├── Dockerfile                 # Multi-stage build for Cloud Run
+├── .dockerignore
+├── prepare_deploy.sh          # Copies parquet data for Docker build
 └── README.md
 ```
 
 ## Roadmap
 
-- **Phase 3** — Docker + Google Cloud Run deployment
-- **Phase 4** — Mobile responsive, loading states, polish
-- **Future** — Nearby schools (radius search), choropleth dashboard, export to CSV/GeoJSON, bookmarkable URLs
+- **Future** — Nearby schools (radius search), choropleth dashboard, export to CSV/GeoJSON, bookmarkable URLs, mobile responsive
