@@ -166,7 +166,7 @@ def find_missing(enrollment_df, universe_ids, crosswalk=None):
     # Remap through crosswalk if available
     if crosswalk is not None:
         from .build_crosswalk import remap_source
-        df, _ = remap_source(df, crosswalk)
+        df, _, _ = remap_source(df, crosswalk)
 
     # Find IDs still not in the universe
     missing_mask = ~df["school_id"].isin(universe_ids)
@@ -196,7 +196,7 @@ def get_enrollment_ids(filepath, sector="public", crosswalk=None):
 
     if crosswalk is not None:
         from .build_crosswalk import remap_source
-        df, _ = remap_source(df, crosswalk)
+        df, _, _ = remap_source(df, crosswalk)
 
     return set(df["school_id"].dropna())
 

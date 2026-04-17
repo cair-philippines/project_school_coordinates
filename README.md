@@ -48,12 +48,12 @@ Two separate pipelines address the distinct challenges of each sector:
 
 ## Output
 
-### Public Schools — 48,436 schools (46,589 valid coords, 1,285 suspect coords, 562 no coords)
+### Public Schools — 48,140 schools (46,283 valid coords, 1,295 suspect coords, 562 no coords)
 
 | File | Description |
 |---|---|
 | `data/modified/public_school_coordinates.parquet` | Canonical coordinates table |
-| `data/modified/public_school_id_crosswalk.parquet` | Historical → canonical school ID mapping (80,333 entries) |
+| `data/modified/public_school_id_crosswalk.parquet` | Historical → canonical school ID mapping (71,822 entries, canonical IDs consistently 6-digit) |
 | `data/modified/public_school_coordinates.csv` | CSV export of coordinates table |
 | `data/modified/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
 | `output/build_public_report.txt` | Pipeline run summary and statistics |
@@ -206,6 +206,7 @@ project_coordinates/
 - **[Pipeline Plan](documentation/pipeline_plan.md)** — objective, source descriptions, priority cascade rationale, step-by-step design, output schemas, and design decisions.
 - **[Technical Notes](documentation/technical_notes.md)** — comprehensive processing details: source ingestion, column mappings, crosswalk algorithms, threshold choices, validation results, and known limitations.
 - **[Duplication Audit](documentation/duplication_audit.md)** — comprehensive audit of the public school coordinates dataset for duplicate and near-duplicate records. Identifies 25 same-barangay exact duplicates, 6 near-identical name pairs, 236 systematic X/1X ID pairs, and documents recommended actions (merge, investigate, retain) for each. Intended as a reference for championing smarter school data practices.
+- **[Crosswalk 7-Digit Reconciliation](documentation/crosswalk_7digit_reconciliation.md)** — traces the arc from a downstream school-transfer prediction project's bug report through implementation and pre/post results. Documents why the canonical school ID is now consistently 6-digit, the merge logic for intra-source duplicates, and the downstream impact for any project that joins on `school_id`.
 
 ### Private Schools
 - **[Pipeline Plan](documentation/private_pipeline_plan.md)** — objective, source description, coordinate cleaning strategy, output schema, and design decisions.

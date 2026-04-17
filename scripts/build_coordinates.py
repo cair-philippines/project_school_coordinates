@@ -90,15 +90,18 @@ def load_all_sources():
 def build_and_apply_crosswalk(sources):
     """Build the school ID crosswalk and remap all source DataFrames."""
     root = str(PROJECT_ROOT)
-    crosswalk = build_crosswalk.build(root, sources)
+    enrollment_path = next(
+        (str(p) for p in ENROLLMENT_FILES if p.exists()), None
+    )
+    crosswalk = build_crosswalk.build(root, sources, enrollment_path=enrollment_path)
 
     print("\nRemapping source IDs to canonical...")
     remapped_sources = {}
     for label, df in sources.items():
-        remapped, count = build_crosswalk.remap_source(df, crosswalk)
+        remapped, count, merged = build_crosswalk.remap_source(df, crosswalk)
         remapped_sources[label] = remapped
-        if count > 0:
-            print(f"  {label}: {count:,} IDs remapped")
+        if count > 0 or merged > 0:
+            print(f"  {label}: {count:,} IDs remapped, {merged:,} merged")
 
     # Remove known private school IDs AFTER crosswalk remapping
     # (OSMapaaralan contains both public and private footprints, and some

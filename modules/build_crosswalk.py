@@ -6,6 +6,8 @@ Two layers:
   Layer 2 — Spatial + name deduplication for orphan IDs
 """
 
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from difflib import SequenceMatcher
@@ -22,7 +24,22 @@ DISTANCE_THRESHOLD_KM = 0.1  # 100 meters
 NAME_SIMILARITY_THRESHOLD = 0.6
 
 
-def _build_layer1(project_root):
+def _load_enrollment_ids(enrollment_path):
+    """Load 6-digit school IDs from the 2024-25 enrollment file.
+
+    Used to reconcile the transient 7-digit school_id_2024 format (ID with
+    a leading '1' prepended) back to the canonical 6-digit form.
+    """
+    if not enrollment_path:
+        return set()
+    path = Path(enrollment_path)
+    if not path.exists():
+        return set()
+    enroll = pd.read_csv(path, usecols=["school_id"], dtype=str)
+    return set(enroll["school_id"].dropna().str.strip())
+
+
+def _build_layer1(project_root, enrollment_path=None):
     """Layer 1: Extract ID transitions from the official School ID Mapping tab.
 
     For each row (school entity), collect all distinct IDs across:
@@ -47,16 +64,47 @@ def _build_layer1(project_root):
         dtype=str,
     )
 
+    enrollment_ids = _load_enrollment_ids(enrollment_path)
+    if enrollment_ids:
+        print(f"  Loaded {len(enrollment_ids):,} enrollment IDs for canonical reconciliation")
+    else:
+        print("  No enrollment file provided — 7-digit canonicals will not be reconciled")
+
     records = []
     seen_pairs = set()
+    unresolved_7digit = []
+    reconciled_7digit = 0
 
     for _, row in df.iterrows():
-        canonical = normalize_school_id(row.get("school_id_2024"))
-        if not canonical:
+        raw_canonical = normalize_school_id(row.get("school_id_2024"))
+        if not raw_canonical:
             continue
+
+        # Reconcile the transient 7-digit format (a leading '1' prepended to the
+        # standard 6-digit DepEd LIS ID) that appeared in school_id_2024 for
+        # ~7,000 schools. DepEd reverted to 6-digit by SY 2024-25 — verify the
+        # stripped form exists in that enrollment universe before adopting it.
+        transient_7digit = None
+        if len(raw_canonical) == 7 and raw_canonical.startswith("1"):
+            candidate = raw_canonical[1:]
+            if candidate in enrollment_ids:
+                canonical = candidate
+                transient_7digit = raw_canonical
+                reconciled_7digit += 1
+            else:
+                unresolved_7digit.append(raw_canonical)
+                canonical = raw_canonical
+        else:
+            canonical = raw_canonical
 
         # Collect all IDs this school entity has ever used
         historical_ids = {}
+
+        # Emit the transient 7-digit form as a historical ID so any stale data
+        # source still containing "1XXXXXX" gets remapped to the 6-digit
+        # canonical by remap_source().
+        if transient_7digit and transient_7digit != canonical:
+            historical_ids[transient_7digit] = {"first": 2024, "last": 2024}
 
         # From SY columns — track year ranges
         for col in SY_COLS:
@@ -108,6 +156,11 @@ def _build_layer1(project_root):
     crosswalk = pd.DataFrame(records)
     print(f"  Layer 1 (official mapping): {len(crosswalk):,} entries "
           f"({crosswalk['historical_id'].nunique():,} unique historical IDs)")
+    if reconciled_7digit:
+        print(f"  Reconciled 7-digit canonicals to 6-digit: {reconciled_7digit:,}")
+    if unresolved_7digit:
+        print(f"  WARNING: {len(unresolved_7digit):,} 7-digit IDs could not be "
+              f"reconciled against 2024-25 enrollment (likely closed/merged)")
     return crosswalk
 
 
@@ -243,7 +296,7 @@ def _build_layer2(crosswalk_l1, sources):
     return result
 
 
-def build(project_root, sources):
+def build(project_root, sources, enrollment_path=None):
     """Build the complete school ID crosswalk.
 
     Parameters
@@ -252,6 +305,10 @@ def build(project_root, sources):
         Project root directory.
     sources : dict
         Source label -> DataFrame (loaded and normalized).
+    enrollment_path : str or Path, optional
+        Path to the 2024-25 enrollment CSV. When provided, Layer 1 uses the
+        enrollment IDs to reconcile the transient 7-digit school_id_2024
+        format (leading '1') back to the 6-digit canonical.
 
     Returns
     -------
@@ -260,7 +317,7 @@ def build(project_root, sources):
         match_method, year_first_seen, year_last_seen.
     """
     print("Building school ID crosswalk...")
-    layer1 = _build_layer1(project_root)
+    layer1 = _build_layer1(project_root, enrollment_path=enrollment_path)
     layer2 = _build_layer2(layer1, sources)
     # Ensure consistent dtypes before concat
     for col in ["year_first_seen", "year_last_seen"]:
@@ -268,7 +325,54 @@ def build(project_root, sources):
         layer2[col] = layer2[col].astype("Int64")
     crosswalk = pd.concat([layer1, layer2], ignore_index=True)
     print(f"  Total crosswalk: {len(crosswalk):,} entries")
+
+    non_6 = (crosswalk["canonical_id"].str.len() != 6).sum()
+    if non_6 > 0:
+        length_dist = crosswalk["canonical_id"].str.len().value_counts().sort_index().to_dict()
+        print(f"  WARNING: {non_6:,} crosswalk entries have non-6-digit canonicals")
+        print(f"  Canonical length distribution: {length_dist}")
+
     return crosswalk
+
+
+def _consolidate_duplicates(df):
+    """Collapse rows that share a school_id after remapping.
+
+    When 7-digit and 6-digit variants of the same school both appear in a
+    source, remapping to the canonical form produces intra-source duplicates.
+    Prefer rows with valid coordinates, then rows with a non-empty school_name,
+    then stable first-wins.
+
+    Returns
+    -------
+    tuple of (pd.DataFrame, int)
+        Deduplicated DataFrame and the number of rows merged away.
+    """
+    if not df.duplicated(subset="school_id", keep=False).any():
+        return df, 0
+
+    work = df.copy()
+    sort_keys, ascending = [], []
+
+    if "latitude" in work.columns and "longitude" in work.columns:
+        work["_has_coords"] = work["latitude"].notna() & work["longitude"].notna()
+        sort_keys.append("_has_coords")
+        ascending.append(False)
+
+    if "school_name" in work.columns:
+        names = work["school_name"].astype(str).str.strip()
+        work["_has_name"] = work["school_name"].notna() & (names != "") & (names != "None")
+        sort_keys.append("_has_name")
+        ascending.append(False)
+
+    if sort_keys:
+        work = work.sort_values(sort_keys, ascending=ascending, kind="mergesort")
+
+    before = len(work)
+    work = work.drop_duplicates(subset="school_id", keep="first")
+    work = work.drop(columns=[c for c in ("_has_coords", "_has_name") if c in work.columns])
+    work = work.reset_index(drop=True)
+    return work, before - len(work)
 
 
 def remap_source(df, crosswalk):
@@ -283,8 +387,9 @@ def remap_source(df, crosswalk):
 
     Returns
     -------
-    pd.DataFrame
-        Copy of df with school_id remapped to canonical IDs.
+    tuple of (pd.DataFrame, int, int)
+        Remapped DataFrame, count of rows whose school_id changed,
+        and count of rows merged by intra-source duplicate consolidation.
     """
     # Deduplicate: if a historical_id maps to multiple canonicals, keep the first
     # (Layer 1 official_mapping entries come before Layer 2, so they take priority)
@@ -295,4 +400,6 @@ def remap_source(df, crosswalk):
     # Only remap where a mapping exists; keep original if not in crosswalk
     result["school_id"] = mapped.fillna(result["school_id"])
     remapped_count = (df["school_id"] != result["school_id"]).sum()
-    return result, remapped_count
+
+    result, merged_count = _consolidate_duplicates(result)
+    return result, remapped_count, merged_count
