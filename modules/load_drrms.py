@@ -9,7 +9,7 @@ Deduplicated to one row per school, keeping the first report's coordinates.
 
 import pandas as pd
 import re
-from .utils import SOURCE_DRRMS, has_valid_coords, normalize_school_id
+from .utils import SOURCE_DRRMS, fix_swapped_coords, has_valid_coords, normalize_school_id
 
 RAW_PATH = "data/raw/DRRMS IMRS data 2025.csv"
 
@@ -85,6 +85,7 @@ def load(project_root):
     # Parse coordinates
     renamed["latitude"] = pd.to_numeric(renamed["latitude"], errors="coerce")
     renamed["longitude"] = pd.to_numeric(renamed["longitude"], errors="coerce")
+    renamed, _ = fix_swapped_coords(renamed, source_label=SOURCE_DRRMS)
     renamed = renamed[has_valid_coords(renamed)].copy()
 
     # Normalize region names

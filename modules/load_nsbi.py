@@ -6,7 +6,7 @@ administrative metadata (region, division, province, municipality, barangay).
 """
 
 import pandas as pd
-from .utils import SOURCE_NSBI, has_valid_coords, normalize_school_id
+from .utils import SOURCE_NSBI, fix_swapped_coords, has_valid_coords, normalize_school_id
 
 RAW_PATH = "data/raw/SY 2023-2024 LIST OF SCHOOLS WITH LONGITUDE AND LATITUDE.xlsx"
 
@@ -47,6 +47,7 @@ def load(project_root):
     renamed["school_id"] = normalize_school_id(renamed["school_id"])
     renamed["latitude"] = pd.to_numeric(renamed["latitude"], errors="coerce")
     renamed["longitude"] = pd.to_numeric(renamed["longitude"], errors="coerce")
+    renamed, _ = fix_swapped_coords(renamed, source_label=SOURCE_NSBI)
     renamed = renamed[has_valid_coords(renamed)].copy()
     renamed["source"] = SOURCE_NSBI
 

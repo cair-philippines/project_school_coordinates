@@ -8,7 +8,7 @@ DepEd school ID.
 import json
 import pandas as pd
 import numpy as np
-from .utils import SOURCE_OSM, has_valid_coords, normalize_school_id
+from .utils import SOURCE_OSM, fix_swapped_coords, has_valid_coords, normalize_school_id
 
 RAW_PATH = "data/raw/osmapaaralan_overpass_turbo_export.geojson"
 
@@ -103,6 +103,7 @@ def load(project_root):
     df["school_id"] = normalize_school_id(df["school_id"])
     df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
     df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
+    df, _ = fix_swapped_coords(df, source_label=SOURCE_OSM)
     df = df[has_valid_coords(df)].copy()
     df["source"] = SOURCE_OSM
 
