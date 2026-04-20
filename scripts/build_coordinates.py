@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import pandas as pd
 import numpy as np
 from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan, load_drrms
-from modules import build_crosswalk, load_enrollment, load_psgc, validate_psgc
+from modules import build_crosswalk, load_enrollment, load_psgc, validate_psgc, suspect_coords
 from modules.utils import (
     COORD_PRIORITY,
     LOCATION_PRIORITY,
@@ -653,6 +653,10 @@ def append_psgc(result):
     # Municipal validation must run BEFORE barangay validation so coord_status
     # is populated when the barangay check decides whether to trust coords.
     result = validate_psgc.validate_municipality(result, project_root=root)
+    # Pass 4: catch placeholder/cluster/round-coord schools that survived
+    # the municipal check (they're in the correct municipality but still
+    # implausible, e.g. same lat/lon shared across multiple municipalities).
+    result = suspect_coords.detect_suspect(result, municipality_col="municipality")
     result = validate_psgc.validate(result)
 
     return result
