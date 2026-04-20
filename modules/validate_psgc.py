@@ -38,14 +38,18 @@ def spatial_lookup(project_root, df):
     """Perform point-in-polygon lookup for schools with coordinates.
 
     Returns both barangay and municipality PSGC codes from the polygon
-    the school's coordinate falls in.
+    the school's coordinate falls in. When a point falls on a polygon
+    boundary and sjoin returns multiple candidates, prefer the polygon
+    whose ADM3_PCODE matches the school's claimed psgc_municity (if
+    present). This protects boundary schools from arbitrary tie-breaks.
 
     Parameters
     ----------
     project_root : str
         Project root directory.
     df : pd.DataFrame
-        Schools DataFrame with latitude, longitude columns.
+        Schools DataFrame with latitude, longitude columns. psgc_municity
+        is used as a tie-breaker if available.
 
     Returns
     -------
@@ -59,7 +63,6 @@ def spatial_lookup(project_root, df):
     print("  Loading shapefile...")
     gdf = _load_shapefile(project_root)
 
-    # Filter to schools with valid coordinates
     has_coords = df["latitude"].notna() & df["longitude"].notna()
     coords_df = df[has_coords].copy()
 
@@ -70,16 +73,21 @@ def spatial_lookup(project_root, df):
 
     print(f"  Performing point-in-polygon for {len(coords_df):,} schools...")
 
-    # Create GeoDataFrame from school points
+    # Carry claimed_muni_7 for tie-break when sjoin returns multiple matches
+    carry_cols = ["school_id"]
+    has_claimed_muni = "psgc_municity" in coords_df.columns
+    if has_claimed_muni:
+        coords_df = coords_df.copy()
+        coords_df["_claimed_muni_7"] = coords_df["psgc_municity"].astype(str).str[:7]
+        carry_cols.append("_claimed_muni_7")
+
     geometry = [Point(lon, lat) for lon, lat in zip(coords_df["longitude"], coords_df["latitude"])]
     schools_gdf = gpd.GeoDataFrame(
-        coords_df[["school_id"]],
+        coords_df[carry_cols],
         geometry=geometry,
         crs="EPSG:4326",
     )
 
-    # Spatial join: find which barangay polygon each school falls in
-    # Carry both ADM4_PCODE (barangay) and ADM3_PCODE (municipality)
     joined = gpd.sjoin(
         schools_gdf,
         gdf[["ADM4_PCODE", "ADM3_PCODE", "geometry"]],
@@ -87,10 +95,19 @@ def spatial_lookup(project_root, df):
         predicate="within",
     )
 
-    # Handle duplicates (school on polygon boundary may match multiple)
-    joined = joined.drop_duplicates(subset="school_id", keep="first")
+    # Prefer a polygon whose ADM3_PCODE matches the claimed municipality so a
+    # boundary school isn't arbitrarily assigned to the wrong municipality.
+    n_multi = (joined.groupby("school_id").size() > 1).sum()
+    if has_claimed_muni:
+        claimed_match = joined["ADM3_PCODE"] == joined["_claimed_muni_7"]
+        joined = joined.sort_values("school_id", kind="mergesort")
+        joined["_claimed_match"] = claimed_match
+        joined = joined.sort_values("_claimed_match", ascending=False, kind="mergesort")
 
-    # Map results back to original DataFrame
+    joined = joined.drop_duplicates(subset="school_id", keep="first")
+    if has_claimed_muni:
+        joined = joined.drop(columns=["_claimed_muni_7", "_claimed_match"], errors="ignore")
+
     lookup_brgy = joined.set_index("school_id")["ADM4_PCODE"]
     lookup_muni = joined.set_index("school_id")["ADM3_PCODE"]
 
@@ -101,6 +118,8 @@ def spatial_lookup(project_root, df):
     outside = has_coords.sum() - matched
     print(f"  Matched to polygon: {matched:,}")
     print(f"  Outside all polygons: {outside:,}")
+    if n_multi > 0:
+        print(f"  Boundary schools (multiple polygon matches, tie-broken): {n_multi:,}")
 
     return df
 

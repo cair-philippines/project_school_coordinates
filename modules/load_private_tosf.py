@@ -112,8 +112,9 @@ def load_coordinates(project_root):
     df["school_id"] = normalize_school_id(df["school_id"])
     df = df.dropna(subset=["school_id"])
 
-    # Deduplicate — keep first submission per school
-    df = df.drop_duplicates(subset="school_id", keep="first").copy()
+    # Deduplicate — keep LAST submission per school. Multiple submissions
+    # represent corrections; the later one supersedes the earlier.
+    df = df.drop_duplicates(subset="school_id", keep="last").copy()
 
     # Parse coordinates
     df["latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")

@@ -332,6 +332,16 @@ def build(project_root, sources, enrollment_path=None):
         print(f"  WARNING: {non_6:,} crosswalk entries have non-6-digit canonicals")
         print(f"  Canonical length distribution: {length_dist}")
 
+    # Flag historical_ids that map to multiple canonicals — these are Excel
+    # ambiguities that identity-first dedup resolves safely, but still worth
+    # surfacing so upstream data can be cleaned.
+    ambig = crosswalk.groupby("historical_id")["canonical_id"].nunique()
+    ambig_ids = ambig[ambig > 1].index.tolist()
+    if ambig_ids:
+        print(f"  WARNING: {len(ambig_ids):,} historical IDs map to multiple canonicals "
+              f"(Excel ambiguity; resolved by preferring identity mappings)")
+        print(f"  Sample: {ambig_ids[:5]}")
+
     return crosswalk
 
 
@@ -375,6 +385,25 @@ def _consolidate_duplicates(df):
     return work, before - len(work)
 
 
+def _dedupe_crosswalk_identity_first(crosswalk):
+    """Deduplicate crosswalk by historical_id, preferring identity mappings.
+
+    When a historical_id has multiple canonical candidates (the Excel has
+    ambiguous or contradictory entries — see crosswalk_7digit_reconciliation
+    docs), prefer the row where historical_id == canonical_id. This preserves
+    a school's self-identity against an upstream Excel entry that tries to
+    remap it into a different physical school.
+
+    Only relevant when the historical_id actually IS a canonical in its own
+    right (i.e., some Excel row has school_id_2024 equal to this ID).
+    """
+    xw = crosswalk.copy()
+    xw["_is_identity"] = xw["historical_id"] == xw["canonical_id"]
+    xw = xw.sort_values("_is_identity", ascending=False, kind="mergesort")
+    deduped = xw.drop_duplicates(subset="historical_id", keep="first")
+    return deduped.drop(columns="_is_identity")
+
+
 def remap_source(df, crosswalk):
     """Remap school_id in a source DataFrame using the crosswalk.
 
@@ -391,9 +420,7 @@ def remap_source(df, crosswalk):
         Remapped DataFrame, count of rows whose school_id changed,
         and count of rows merged by intra-source duplicate consolidation.
     """
-    # Deduplicate: if a historical_id maps to multiple canonicals, keep the first
-    # (Layer 1 official_mapping entries come before Layer 2, so they take priority)
-    deduped = crosswalk.drop_duplicates(subset="historical_id", keep="first")
+    deduped = _dedupe_crosswalk_identity_first(crosswalk)
     lookup = deduped.set_index("historical_id")["canonical_id"]
     result = df.copy()
     mapped = result["school_id"].map(lookup)
