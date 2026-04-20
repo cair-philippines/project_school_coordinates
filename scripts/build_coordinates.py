@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import pandas as pd
 import numpy as np
 from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan, load_drrms
-from modules import build_crosswalk, load_enrollment, load_psgc, validate_psgc, suspect_coords, cascade_fallback
+from modules import build_crosswalk, load_enrollment, psgc_pipeline, enrich_enrollment
 from modules.utils import (
     COORD_PRIORITY,
     LOCATION_PRIORITY,
@@ -627,133 +627,19 @@ def tag_enrollment_status(result, crosswalk):
 
 
 def append_psgc(result, sources):
-    """Join PSGC crosswalk, backfill blank names, and run spatial validation.
-
-    sources is the dict of source-label -> remapped DataFrame, needed by the
-    cascade fallback step to look up alternative coordinates for suspect
-    schools.
-    """
-    root = str(PROJECT_ROOT)
-
-    print("\nAppending PSGC codes...")
-    psgc = load_psgc.load(root)
-    print(f"  PSGC crosswalk: {len(psgc):,} schools")
-
-    result = result.merge(psgc, on="school_id", how="left")
-    matched = result["psgc_barangay"].notna().sum()
-    print(f"  PSGC matched: {matched:,} / {len(result):,}")
-
-    # Backfill blank school names from PSGC crosswalk
-    blank_name = result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")
-    has_psgc_name = result["psgc_school_name"].notna() & (result["psgc_school_name"] != "None")
-    backfill_mask = blank_name & has_psgc_name
-    result.loc[backfill_mask, "school_name"] = result.loc[backfill_mask, "psgc_school_name"]
-    print(f"  School names backfilled from PSGC: {backfill_mask.sum():,}")
-    remaining_blank = (result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")).sum()
-    print(f"  Still blank after backfill: {remaining_blank:,}")
-
-    # Drop the temporary psgc_school_name column (name is now in school_name)
-    result = result.drop(columns=["psgc_school_name"], errors="ignore")
-
-    print("\nSpatial validation (point-in-polygon)...")
-    result = validate_psgc.spatial_lookup(root, result)
-    # Municipal validation must run BEFORE barangay validation so coord_status
-    # is populated when the barangay check decides whether to trust coords.
-    result = validate_psgc.validate_municipality(result, project_root=root)
-    # Fallback: for suspect schools, try lower-priority sources whose coords
-    # pass the same municipal check. Promotes back to 'valid' with
-    # coord_fallback_from recording the original source.
-    result = cascade_fallback.apply_fallback(result, sources, project_root=root)
-    # Pass 4: catch placeholder/cluster/round-coord schools that survived
-    # the municipal check (they're in the correct municipality but still
-    # implausible, e.g. same lat/lon shared across multiple municipalities).
-    result = suspect_coords.detect_suspect(result, municipality_col="municipality")
-    result = validate_psgc.validate(result)
-
-    return result
+    """Public-pipeline PSGC attach + spatial validation + cascade fallback + Pass 4."""
+    return psgc_pipeline.run(
+        result,
+        project_root=str(PROJECT_ROOT),
+        sources_for_fallback=sources,
+        run_pass4=True,
+        municipality_col="municipality",
+    )
 
 
 def enrich_from_enrollment(result):
-    """Enrich schools with metadata from the enrollment file.
-
-    Adds: school_name (backfill), region (NIR-aware), old_region,
-    school_management, annex_status, offers_es/jhs/shs, shs_strand_offerings.
-    """
-    print("\nEnriching from enrollment metadata...")
-    for filepath in ENROLLMENT_FILES:
-        if not filepath.exists():
-            continue
-        meta = load_enrollment.load_full_metadata(str(filepath))
-        print(f"  Enrollment metadata: {len(meta):,} schools")
-
-        meta_indexed = meta.set_index("school_id")
-
-        # Backfill school_name from enrollment where still blank
-        blank_name = result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")
-        in_meta = result["school_id"].isin(meta_indexed.index)
-        backfill_name = blank_name & in_meta
-        if backfill_name.sum() > 0:
-            fill_ids = result.loc[backfill_name, "school_id"]
-            result.loc[backfill_name, "school_name"] = meta_indexed.loc[
-                fill_ids.values, "school_name"
-            ].values
-            print(f"  School names backfilled from enrollment: {backfill_name.sum():,}")
-
-        # Add new columns from enrollment (join by school_id)
-        enroll_cols = [
-            "school_management", "annex_status",
-            "offers_es", "offers_jhs", "offers_shs", "shs_strand_offerings",
-        ]
-        for col in enroll_cols:
-            if col not in result.columns:
-                result[col] = None
-            matched = result["school_id"].isin(meta_indexed.index)
-            fill_ids = result.loc[matched, "school_id"]
-            if len(fill_ids) > 0 and col in meta_indexed.columns:
-                result.loc[matched, col] = meta_indexed.loc[
-                    fill_ids.values, col
-                ].values
-
-        # Add region (NIR-aware) and old_region
-        # Current 'region' in result is from coordinate sources (old naming)
-        # Rename it to old_region, then fill new region from enrollment
-        if "old_region" not in result.columns:
-            result["old_region"] = result["region"]
-
-        # Fill region (NIR-aware) from enrollment
-        result["region_new"] = None
-        matched = result["school_id"].isin(meta_indexed.index)
-        fill_ids = result.loc[matched, "school_id"]
-        if len(fill_ids) > 0:
-            result.loc[matched, "region_new"] = meta_indexed.loc[
-                fill_ids.values, "region"
-            ].values
-
-        # For schools not in enrollment, derive region from old_region
-        # (they're the same except for NIR provinces)
-        no_new_region = result["region_new"].isna() | (result["region_new"] == "None")
-        result.loc[no_new_region, "region_new"] = result.loc[no_new_region, "old_region"]
-
-        # Also fill old_region from enrollment for schools that only have enrollment data
-        no_old = result["old_region"].isna() | (result["old_region"] == "None")
-        in_meta_old = no_old & result["school_id"].isin(meta_indexed.index)
-        if in_meta_old.sum() > 0:
-            fill_ids = result.loc[in_meta_old, "school_id"]
-            result.loc[in_meta_old, "old_region"] = meta_indexed.loc[
-                fill_ids.values, "old_region"
-            ].values
-
-        # Replace region with NIR-aware version
-        result["region"] = result["region_new"]
-        result = result.drop(columns=["region_new"])
-
-        matched_count = matched.sum()
-        print(f"  Enriched: {matched_count:,} / {len(result):,}")
-
-    remaining_blank = (result["school_name"].isna() | (result["school_name"] == "None") | (result["school_name"] == "")).sum()
-    print(f"  Remaining blank school names: {remaining_blank:,}")
-
-    return result
+    """Public-pipeline enrollment enrichment (shared implementation)."""
+    return enrich_enrollment.enrich(result, ENROLLMENT_FILES)
 
 
 def main():
