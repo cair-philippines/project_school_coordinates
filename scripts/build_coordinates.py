@@ -126,7 +126,17 @@ def build_and_apply_crosswalk(sources):
 # Step 2: Establish the school universe (with enrollment expansion)
 # ---------------------------------------------------------------------------
 def build_school_universe(sources, crosswalk):
-    """Union all school_ids across sources, then expand from enrollment files."""
+    """Union all school_ids across sources, then expand from enrollment files.
+
+    Returns
+    -------
+    tuple of (pd.DataFrame, pd.DataFrame)
+        - universe: one column (school_id), unique school_ids across sources
+          and any enrollment-only additions
+        - enrollment_meta: enrollment rows for schools added via expansion
+          (used downstream for location/name fill). Empty DataFrame if
+          nothing was added.
+    """
     all_ids = pd.concat(
         [df[["school_id"]].drop_duplicates() for df in sources.values()],
         ignore_index=True,
@@ -134,7 +144,6 @@ def build_school_universe(sources, crosswalk):
     base_count = len(all_ids)
     print(f"\nSchool universe (from coord sources): {base_count:,}")
 
-    # Expand from enrollment files
     enrollment_additions = []
     for filepath in ENROLLMENT_FILES:
         if not filepath.exists():
@@ -155,13 +164,12 @@ def build_school_universe(sources, crosswalk):
             [all_ids, new_ids[["school_id"]]],
             ignore_index=True,
         )
-        # Store enrollment metadata for location fill later
-        build_school_universe._enrollment_meta = additions
+        enrollment_meta = additions
     else:
-        build_school_universe._enrollment_meta = pd.DataFrame()
+        enrollment_meta = pd.DataFrame()
 
     print(f"  Final universe: {len(all_ids):,} (+{len(all_ids) - base_count:,} from enrollment)")
-    return all_ids
+    return all_ids, enrollment_meta
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +228,7 @@ def apply_coord_cascade(universe, sources):
 # ---------------------------------------------------------------------------
 # Step 4: Attach location columns
 # ---------------------------------------------------------------------------
-def attach_location(result, sources):
+def attach_location(result, sources, enrollment_meta):
     """Fill region, province, municipality, barangay from best source."""
     loc_cols = ["region", "province", "municipality", "barangay"]
     for col in loc_cols:
@@ -282,7 +290,7 @@ def attach_location(result, sources):
         result.loc[idx, "school_name"] = valid_matched["school_name"].values
 
     # Fill remaining gaps from enrollment metadata (for enrollment-only schools)
-    enroll_meta = getattr(build_school_universe, "_enrollment_meta", pd.DataFrame())
+    enroll_meta = enrollment_meta if enrollment_meta is not None else pd.DataFrame()
     if len(enroll_meta) > 0:
         enroll_indexed = enroll_meta.set_index("school_id")
         enroll_loc_cols = [c for c in loc_cols if c in enroll_indexed.columns]
@@ -736,9 +744,9 @@ def enrich_from_enrollment(result):
 def main():
     sources = load_all_sources()
     sources, crosswalk = build_and_apply_crosswalk(sources)
-    universe = build_school_universe(sources, crosswalk)
+    universe, enrollment_meta = build_school_universe(sources, crosswalk)
     result = apply_coord_cascade(universe, sources)
-    result = attach_location(result, sources)
+    result = attach_location(result, sources, enrollment_meta)
     result = tag_enrollment_status(result, crosswalk)
     result = append_psgc(result)
     result = enrich_from_enrollment(result)
