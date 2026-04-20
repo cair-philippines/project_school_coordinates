@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import pandas as pd
 import numpy as np
 from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan, load_drrms
-from modules import build_crosswalk, load_enrollment, load_psgc, validate_psgc, suspect_coords
+from modules import build_crosswalk, load_enrollment, load_psgc, validate_psgc, suspect_coords, cascade_fallback
 from modules.utils import (
     COORD_PRIORITY,
     LOCATION_PRIORITY,
@@ -425,6 +425,7 @@ def write_output(result, crosswalk, report_text):
         "latitude",
         "longitude",
         "coord_source",
+        "coord_fallback_from",
         "monitoring_chosen_source",
         "sources_available",
         "coord_status",
@@ -507,6 +508,7 @@ def write_output(result, crosswalk, report_text):
         {"field": "latitude", "value": "Final latitude (WGS84). Null if no coordinate source has data."},
         {"field": "longitude", "value": "Final longitude (WGS84). Null if no coordinate source has data."},
         {"field": "coord_source", "value": "Which source provided the coordinates (see Coordinate Sources below)"},
+        {"field": "coord_fallback_from", "value": "If non-null, the original higher-priority source whose coordinates were rejected as suspect (wrong municipality or outside all polygons). The school's published coordinates come from the next lower-priority source whose coordinates passed the municipal check."},
         {"field": "monitoring_chosen_source", "value": "If coord_source=monitoring_validated: which sub-source the validator chose (OSMapaaralan, NSBI, or New coordinates). Null otherwise."},
         {"field": "sources_available", "value": "Comma-separated list of all sources that had coordinates for this school. 'enrollment_only' if school is only known from enrollment data."},
         {"field": "coord_status", "value": "Coordinate quality: 'valid' (in correct municipality), 'suspect' (outside all polygons or wrong municipality), or 'no_coords' (no coordinate source)."},
@@ -624,8 +626,13 @@ def tag_enrollment_status(result, crosswalk):
     return result
 
 
-def append_psgc(result):
-    """Join PSGC crosswalk, backfill blank names, and run spatial validation."""
+def append_psgc(result, sources):
+    """Join PSGC crosswalk, backfill blank names, and run spatial validation.
+
+    sources is the dict of source-label -> remapped DataFrame, needed by the
+    cascade fallback step to look up alternative coordinates for suspect
+    schools.
+    """
     root = str(PROJECT_ROOT)
 
     print("\nAppending PSGC codes...")
@@ -653,6 +660,10 @@ def append_psgc(result):
     # Municipal validation must run BEFORE barangay validation so coord_status
     # is populated when the barangay check decides whether to trust coords.
     result = validate_psgc.validate_municipality(result, project_root=root)
+    # Fallback: for suspect schools, try lower-priority sources whose coords
+    # pass the same municipal check. Promotes back to 'valid' with
+    # coord_fallback_from recording the original source.
+    result = cascade_fallback.apply_fallback(result, sources, project_root=root)
     # Pass 4: catch placeholder/cluster/round-coord schools that survived
     # the municipal check (they're in the correct municipality but still
     # implausible, e.g. same lat/lon shared across multiple municipalities).
@@ -752,7 +763,7 @@ def main():
     result = apply_coord_cascade(universe, sources)
     result = attach_location(result, sources, enrollment_meta)
     result = tag_enrollment_status(result, crosswalk)
-    result = append_psgc(result)
+    result = append_psgc(result, sources)
     result = enrich_from_enrollment(result)
     report_text = validate_and_report(result, sources, crosswalk)
     write_output(result, crosswalk, report_text)
