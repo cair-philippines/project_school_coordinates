@@ -108,36 +108,40 @@ def spatial_lookup(project_root, df):
 def validate(df):
     """Compare claimed vs observed PSGC barangay and tag results.
 
-    This is barangay-level metadata — it does NOT flag coord_status.
+    Barangay-level metadata only — does NOT flag coord_status, but DOES
+    respect it: schools whose coord_status is not valid/fixed_swap are
+    tagged psgc_no_validation regardless of barangay-level agreement, since
+    suspect coordinates should not drive an "in the right barangay" claim.
 
     Parameters
     ----------
     df : pd.DataFrame
         Must have columns: psgc_barangay (claimed), psgc_observed_barangay,
-        latitude, longitude.
+        latitude, longitude. If coord_status exists, it is respected.
 
     Returns
     -------
     pd.DataFrame
         Input DataFrame with new column `psgc_validation`.
     """
-    has_coords = df["latitude"].notna() & df["longitude"].notna()
     has_claimed = df["psgc_barangay"].notna()
     has_observed = df["psgc_observed_barangay"].notna()
 
-    # Default: no validation possible
+    # Respect coord_status if present: only coords we trust drive match/mismatch
+    if "coord_status" in df.columns:
+        trustable = df["coord_status"].isin(["valid", "fixed_swap"])
+    else:
+        trustable = df["latitude"].notna() & df["longitude"].notna()
+
     df["psgc_validation"] = "psgc_no_validation"
 
-    # Match: both claimed and observed exist and are equal
-    both = has_claimed & has_observed
+    both = trustable & has_claimed & has_observed
     match_mask = both & (df["psgc_barangay"] == df["psgc_observed_barangay"])
     df.loc[match_mask, "psgc_validation"] = "psgc_match"
 
-    # Mismatch: both exist but differ
     mismatch_mask = both & (df["psgc_barangay"] != df["psgc_observed_barangay"])
     df.loc[mismatch_mask, "psgc_validation"] = "psgc_mismatch"
 
-    # Summary
     match_count = match_mask.sum()
     mismatch_count = mismatch_mask.sum()
     no_val = len(df) - match_count - mismatch_count

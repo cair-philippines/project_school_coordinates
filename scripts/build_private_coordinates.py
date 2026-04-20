@@ -429,8 +429,10 @@ def append_psgc(result):
 
     print("\nSpatial validation (point-in-polygon)...")
     result = validate_psgc.spatial_lookup(root, result)
-    result = validate_psgc.validate(result)
+    # Municipal validation must run BEFORE barangay validation so coord_status
+    # is populated when the barangay check decides whether to trust coords.
     result = validate_psgc.validate_municipality(result, project_root=root)
+    result = validate_psgc.validate(result)
 
     return result
 
