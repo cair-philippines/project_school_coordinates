@@ -6,7 +6,7 @@ validated coordinates (~8,570 schools).
 """
 
 import pandas as pd
-from .utils import SOURCE_MONITORING, fix_swapped_coords, has_valid_coords, normalize_school_id
+from .utils import SOURCE_MONITORING, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
 RAW_PATH = "data/raw/02. DepEd Data Encoding Monitoring Sheet.xlsx"
 SHEETS = ["1", "2", "3", "4", "5"]
@@ -71,6 +71,7 @@ def load(project_root):
     validated["latitude"] = pd.to_numeric(validated["validated_latitude"], errors="coerce")
     validated["longitude"] = pd.to_numeric(validated["validated_longitude"], errors="coerce")
     validated, _ = fix_swapped_coords(validated, source_label=SOURCE_MONITORING)
+    validated, _ = reject_out_of_ph_bounds(validated, source_label=SOURCE_MONITORING)
     validated = validated[has_valid_coords(validated)].copy()
 
     # Normalize
