@@ -11,16 +11,16 @@ divergence in one doesn't silently skew the other output.
 from . import load_enrollment
 
 
-def enrich(result, enrollment_files):
-    """Enrich a coordinate DataFrame with metadata from one or more enrollment files.
+def enrich(result, project_root):
+    """Enrich a coordinate DataFrame with metadata from the enrollment silver.
 
     Parameters
     ----------
     result : pd.DataFrame
         Must contain school_id. May contain school_name, region, old_region
         (any missing columns are created/filled).
-    enrollment_files : list of Path
-        Paths to enrollment CSVs. Non-existent paths are skipped.
+    project_root : str
+        Project root; enrollment silver is read from there.
 
     Returns
     -------
@@ -30,11 +30,15 @@ def enrich(result, enrollment_files):
           school_management, annex_status, offers_es/jhs/shs,
           shs_strand_offerings.
     """
-    print("\nEnriching from enrollment metadata...")
-    for filepath in enrollment_files:
-        if not filepath.exists():
-            continue
-        meta = load_enrollment.load_full_metadata(str(filepath))
+    print("\nEnriching from enrollment silver...")
+    try:
+        meta = load_enrollment.load_full_metadata(project_root)
+    except FileNotFoundError:
+        print("  Enrollment silver not found, skipping enrichment")
+        return result
+
+    # Retain the original single-iteration scoping so the diff stays minimal.
+    for _ in [0]:
         print(f"  Enrollment metadata: {len(meta):,} schools")
 
         meta_indexed = meta.set_index("school_id")

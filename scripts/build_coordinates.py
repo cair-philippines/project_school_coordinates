@@ -45,38 +45,38 @@ ENROLLMENT_FILES = [
 def _load_known_private_ids():
     """Collect school IDs known to be private schools.
 
-    Uses the TOSF file (LIS master list of private schools) and the
-    enrollment file (private sector). These IDs should not appear in
-    the public school output.
+    Reads the private-sector enrollment silver + the TOSF universe silver.
+    These IDs should not appear in the public school output.
     """
+    from modules import load_private_tosf
     private_ids = set()
 
-    # From TOSF universe (LIS master list of private schools)
-    tosf_path = PROJECT_ROOT / "data" / "bronze" / "live" / "Private School Seats and TOSF ao 2025Oct27.xlsx"
-    if tosf_path.exists():
-        from modules import load_private_tosf
-        universe = load_private_tosf.load_universe(str(PROJECT_ROOT))
+    root = str(PROJECT_ROOT)
+    try:
+        universe = load_private_tosf.read_silver_universe(root)
         private_ids.update(universe["school_id"].dropna())
+    except FileNotFoundError:
+        pass
 
-    # From enrollment file (private sector)
-    for filepath in ENROLLMENT_FILES:
-        if filepath.exists():
-            enroll = load_enrollment.load(str(filepath), sector="private")
-            private_ids.update(enroll["school_id"].dropna())
+    try:
+        enroll = load_enrollment.read_silver(root, sector="private")
+        private_ids.update(enroll["school_id"].dropna())
+    except FileNotFoundError:
+        pass
 
     return private_ids
 
 
 def load_all_sources():
-    """Load and return a dict of source label -> DataFrame."""
-    print("Loading sources...")
+    """Load the five coordinate sources from silver."""
+    print("Loading silver sources...")
     root = str(PROJECT_ROOT)
     sources = {
-        "monitoring_validated": load_monitoring.load(root),
-        "osmapaaralan": load_osmapaaralan.load(root),
-        "nsbi_2324": load_nsbi.load(root),
-        "geolocation_deped": load_geolocation.load(root),
-        "drrms_imrs": load_drrms.load(root),
+        "monitoring_validated": load_monitoring.read_silver(root),
+        "osmapaaralan": load_osmapaaralan.read_silver(root),
+        "nsbi_2324": load_nsbi.read_silver(root),
+        "geolocation_deped": load_geolocation.read_silver(root),
+        "drrms_imrs": load_drrms.read_silver(root),
     }
     for label, df in sources.items():
         print(f"  {label}: {len(df):,} rows")
@@ -90,10 +90,7 @@ def load_all_sources():
 def build_and_apply_crosswalk(sources):
     """Build the school ID crosswalk and remap all source DataFrames."""
     root = str(PROJECT_ROOT)
-    enrollment_path = next(
-        (str(p) for p in ENROLLMENT_FILES if p.exists()), None
-    )
-    crosswalk = build_crosswalk.build(root, sources, enrollment_path=enrollment_path)
+    crosswalk = build_crosswalk.build(root, sources)
 
     print("\nRemapping source IDs to canonical...")
     remapped_sources = {}
@@ -145,16 +142,18 @@ def build_school_universe(sources, crosswalk):
     print(f"\nSchool universe (from coord sources): {base_count:,}")
 
     enrollment_additions = []
-    for filepath in ENROLLMENT_FILES:
-        if not filepath.exists():
-            print(f"  Enrollment file not found, skipping: {filepath.name}")
-            continue
-        enroll_df = load_enrollment.load(str(filepath))
+    try:
+        enroll_df = load_enrollment.read_silver(str(PROJECT_ROOT), sector="public")
+    except FileNotFoundError:
+        enroll_df = None
+        print("  Enrollment silver not found, skipping expansion")
+
+    if enroll_df is not None:
         universe_ids = set(all_ids["school_id"])
         missing = load_enrollment.find_missing(enroll_df, universe_ids, crosswalk)
         if len(missing) > 0:
             enrollment_additions.append(missing)
-            print(f"  {filepath.name}: {len(missing):,} public schools not in coord sources")
+            print(f"  Enrollment: {len(missing):,} public schools not in coord sources")
 
     if enrollment_additions:
         additions = pd.concat(enrollment_additions, ignore_index=True)
@@ -606,15 +605,15 @@ def write_output(result, crosswalk, report_text):
 # Main
 # ---------------------------------------------------------------------------
 def tag_enrollment_status(result, crosswalk):
-    """Tag each school with enrollment status from enrollment files."""
+    """Tag each school with enrollment status from the enrollment silver."""
     all_enrolled = set()
-    for filepath in ENROLLMENT_FILES:
-        if not filepath.exists():
-            continue
+    try:
         ids = load_enrollment.get_enrollment_ids(
-            str(filepath), sector="public", crosswalk=crosswalk
+            str(PROJECT_ROOT), sector="public", crosswalk=crosswalk
         )
         all_enrolled.update(ids)
+    except FileNotFoundError:
+        pass
 
     result["enrollment_status"] = result["school_id"].apply(
         lambda x: "active" if x in all_enrolled else "no_enrollment_reported"
@@ -645,7 +644,7 @@ def append_psgc(result, sources):
 
 def enrich_from_enrollment(result):
     """Public-pipeline enrollment enrichment (shared implementation)."""
-    return enrich_enrollment.enrich(result, ENROLLMENT_FILES)
+    return enrich_enrollment.enrich(result, str(PROJECT_ROOT))
 
 
 def main():

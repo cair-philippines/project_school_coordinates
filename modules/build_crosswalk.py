@@ -11,10 +11,9 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from difflib import SequenceMatcher
-from .utils import normalize_school_id, haversine_km
 
-RAW_PATH = "data/bronze/frozen/Geolocation of Public Schools_DepEd.xlsx"
-SHEET_NAME = "School ID Mapping"
+from . import load_sos_mapping
+from .utils import normalize_school_id, haversine_km
 
 # SY columns in chronological order
 SY_COLS = [f"sy_{y}" for y in range(2005, 2025)]
@@ -24,22 +23,21 @@ DISTANCE_THRESHOLD_KM = 0.1  # 100 meters
 NAME_SIMILARITY_THRESHOLD = 0.6
 
 
-def _load_enrollment_ids(enrollment_path):
-    """Load 6-digit school IDs from the 2024-25 enrollment file.
+def _load_enrollment_ids(project_root):
+    """Load school IDs from the enrollment silver for canonical reconciliation.
 
     Used to reconcile the transient 7-digit school_id_2024 format (ID with
     a leading '1' prepended) back to the canonical 6-digit form.
     """
-    if not enrollment_path:
+    from . import load_enrollment
+    try:
+        df = load_enrollment.read_silver(project_root)
+        return set(df["school_id"].dropna().str.strip())
+    except FileNotFoundError:
         return set()
-    path = Path(enrollment_path)
-    if not path.exists():
-        return set()
-    enroll = pd.read_csv(path, usecols=["school_id"], dtype=str)
-    return set(enroll["school_id"].dropna().str.strip())
 
 
-def _build_layer1(project_root, enrollment_path=None):
+def _build_layer1(project_root):
     """Layer 1: Extract ID transitions from the official School ID Mapping tab.
 
     For each row (school entity), collect all distinct IDs across:
@@ -57,14 +55,9 @@ def _build_layer1(project_root, enrollment_path=None):
         Columns: historical_id, canonical_id, match_method, year_first_seen,
         year_last_seen
     """
-    df = pd.read_excel(
-        f"{project_root}/{RAW_PATH}",
-        sheet_name=SHEET_NAME,
-        header=0,
-        dtype=str,
-    )
+    df = load_sos_mapping.read_silver(project_root)
 
-    enrollment_ids = _load_enrollment_ids(enrollment_path)
+    enrollment_ids = _load_enrollment_ids(project_root)
     if enrollment_ids:
         print(f"  Loaded {len(enrollment_ids):,} enrollment IDs for canonical reconciliation")
     else:
@@ -296,8 +289,12 @@ def _build_layer2(crosswalk_l1, sources):
     return result
 
 
-def build(project_root, sources, enrollment_path=None):
+def build(project_root, sources):
     """Build the complete school ID crosswalk.
+
+    Reads two silver inputs:
+      - sos_mapping.parquet (via load_sos_mapping.read_silver) for Layer 1
+      - enrollment.parquet  (via load_enrollment.read_silver) for reconciliation
 
     Parameters
     ----------
@@ -305,10 +302,6 @@ def build(project_root, sources, enrollment_path=None):
         Project root directory.
     sources : dict
         Source label -> DataFrame (loaded and normalized).
-    enrollment_path : str or Path, optional
-        Path to the 2024-25 enrollment CSV. When provided, Layer 1 uses the
-        enrollment IDs to reconcile the transient 7-digit school_id_2024
-        format (leading '1') back to the 6-digit canonical.
 
     Returns
     -------
@@ -317,7 +310,7 @@ def build(project_root, sources, enrollment_path=None):
         match_method, year_first_seen, year_last_seen.
     """
     print("Building school ID crosswalk...")
-    layer1 = _build_layer1(project_root, enrollment_path=enrollment_path)
+    layer1 = _build_layer1(project_root)
     layer2 = _build_layer2(layer1, sources)
     # Ensure consistent dtypes before concat
     for col in ["year_first_seen", "year_last_seen"]:

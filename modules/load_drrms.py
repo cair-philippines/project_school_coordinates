@@ -7,11 +7,14 @@ Each row is a disaster report — multiple reports per school are common.
 Deduplicated to one row per school, keeping the first report's coordinates.
 """
 
+from pathlib import Path
+
 import pandas as pd
-import re
+
 from .utils import SOURCE_DRRMS, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
 RAW_PATH = "data/bronze/live/DRRMS IMRS data 2025.csv"
+SILVER_PATH = "data/silver/drrms.parquet"
 
 # Normalize long region names to short format used by other sources
 REGION_MAP = {
@@ -44,21 +47,8 @@ def _normalize_region(val):
     return REGION_MAP.get(key, val.strip())
 
 
-def load(project_root):
-    """Load and normalize DRRMS IMRS data.
-
-    Parameters
-    ----------
-    project_root : str or Path
-        Root directory of the project.
-
-    Returns
-    -------
-    pd.DataFrame
-        Normalized DataFrame with columns: school_id, school_name, latitude,
-        longitude, region, division, province, municipality, barangay, source.
-        Deduplicated to one row per school.
-    """
+def preprocess(project_root):
+    """Read bronze DRRMS CSV, normalize, dedupe, write silver parquet."""
     df = pd.read_csv(
         f"{project_root}/{RAW_PATH}",
         dtype=str,
@@ -103,4 +93,18 @@ def load(project_root):
         "region", "division", "province", "municipality", "barangay",
         "source", "_was_swapped",
     ]
-    return renamed[out_cols].reset_index(drop=True)
+    out = renamed[out_cols].reset_index(drop=True)
+
+    silver_path = Path(project_root) / SILVER_PATH
+    silver_path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(silver_path, index=False)
+    print(f"  Silver written: {silver_path}  ({len(out):,} rows)")
+    return out
+
+
+def read_silver(project_root):
+    """Read the materialized silver parquet."""
+    path = Path(project_root) / SILVER_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"Silver not found: {path}. Run preprocess first.")
+    return pd.read_parquet(path)

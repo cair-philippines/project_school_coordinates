@@ -1,0 +1,11 @@
+{
+  "total_submissions": 9632,
+  "fixed_swap": 111,
+  "rejected_invalid": 507,
+  "rejected_out_of_bounds": 203,
+  "valid": 8141,
+  "suspect_placeholder": 505,
+  "suspect_cluster": 58,
+  "suspect_round": 218,
+  "suspect_total": 781
+}

@@ -3,12 +3,20 @@
 University-validated coordinates for ~11,331 schools flagged for coordinate
 mismatches. Returns only rows with Findings == 'Validated' and non-null
 validated coordinates (~8,570 schools).
+
+Medallion layers:
+  - preprocess(): reads the bronze Excel, normalizes, writes silver parquet
+  - read_silver(): reads the silver parquet for consumption by the cascade
 """
 
+from pathlib import Path
+
 import pandas as pd
+
 from .utils import SOURCE_MONITORING, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
 RAW_PATH = "data/bronze/frozen/02. DepEd Data Encoding Monitoring Sheet.xlsx"
+SILVER_PATH = "data/silver/monitoring.parquet"
 SHEETS = ["1", "2", "3", "4", "5"]
 
 # Column mapping from raw header (row index 1) to normalized names.
@@ -24,21 +32,8 @@ SHEETS = ["1", "2", "3", "4", "5"]
 #   18+: Remarks columns (vary by sheet)
 
 
-def load(project_root):
-    """Load and normalize monitoring sheet data.
-
-    Parameters
-    ----------
-    project_root : str or Path
-        Root directory of the project (e.g., project_coordinates/).
-
-    Returns
-    -------
-    pd.DataFrame
-        Normalized DataFrame with columns: school_id, school_name, latitude,
-        longitude, region, division, barangay, monitoring_chosen_source,
-        plus a 'source' tag column.
-    """
+def preprocess(project_root):
+    """Read bronze, normalize, write silver parquet. Returns the silver DataFrame."""
     frames = []
     for sheet in SHEETS:
         df = pd.read_excel(
@@ -88,4 +83,18 @@ def load(project_root):
         "region", "division", "barangay",
         "monitoring_chosen_source", "source", "_was_swapped",
     ]
-    return validated[out_cols].reset_index(drop=True)
+    out = validated[out_cols].reset_index(drop=True)
+
+    silver_path = Path(project_root) / SILVER_PATH
+    silver_path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(silver_path, index=False)
+    print(f"  Silver written: {silver_path}  ({len(out):,} rows)")
+    return out
+
+
+def read_silver(project_root):
+    """Read the materialized silver parquet."""
+    path = Path(project_root) / SILVER_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"Silver not found: {path}. Run preprocess first.")
+    return pd.read_parquet(path)

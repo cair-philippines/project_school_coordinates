@@ -35,14 +35,14 @@ ENROLLMENT_FILES = [
 # Step 1: Load sources
 # ---------------------------------------------------------------------------
 def load_sources():
-    """Load universe and coordinates from TOSF file."""
+    """Load universe and coordinates from the TOSF silver parquets."""
     root = str(PROJECT_ROOT)
 
-    print("Loading private school sources...")
-    universe = load_private_tosf.load_universe(root)
+    print("Loading private-school silver sources...")
+    universe = load_private_tosf.read_silver_universe(root)
     print(f"  Universe (LIS master list): {len(universe):,} schools")
 
-    coords, clean_stats = load_private_tosf.load_coordinates(root)
+    coords, clean_stats = load_private_tosf.read_silver_coords(root)
     print(f"  RAW DATA submissions: {clean_stats['total_submissions']:,} (deduplicated)")
 
     print(f"\nCoordinate cleaning (Passes 1-3):")
@@ -96,17 +96,19 @@ def expand_from_enrollment(result):
     universe_ids = set(result["school_id"])
 
     additions = []
-    for filepath in ENROLLMENT_FILES:
-        if not filepath.exists():
-            print(f"  Enrollment file not found, skipping: {filepath.name}")
-            continue
-        enroll_df = load_enrollment.load(str(filepath), sector="private")
+    try:
+        enroll_df = load_enrollment.read_silver(str(PROJECT_ROOT), sector="private")
+    except FileNotFoundError:
+        enroll_df = None
+        print("  Enrollment silver not found, skipping expansion")
+
+    if enroll_df is not None:
         missing = enroll_df[~enroll_df["school_id"].isin(universe_ids)]
         missing = missing.drop_duplicates(subset="school_id", keep="first")
         if len(missing) > 0:
             additions.append(missing)
             print(f"\nEnrollment expansion:")
-            print(f"  {filepath.name}: {len(missing):,} private schools not in LIS universe")
+            print(f"  Enrollment: {len(missing):,} private schools not in LIS universe")
 
     if not additions:
         print(f"\nEnrollment expansion: 0 new schools")
@@ -146,13 +148,13 @@ def expand_from_enrollment(result):
 # Step 3: Tag enrollment status
 # ---------------------------------------------------------------------------
 def tag_enrollment_status(result):
-    """Tag each school with enrollment status from enrollment files."""
+    """Tag each school with enrollment status from the enrollment silver."""
     all_enrolled = set()
-    for filepath in ENROLLMENT_FILES:
-        if not filepath.exists():
-            continue
-        ids = load_enrollment.get_enrollment_ids(str(filepath), sector="private")
+    try:
+        ids = load_enrollment.get_enrollment_ids(str(PROJECT_ROOT), sector="private")
         all_enrolled.update(ids)
+    except FileNotFoundError:
+        pass
 
     result["enrollment_status"] = result["school_id"].apply(
         lambda x: "active" if x in all_enrolled else "no_enrollment_reported"
@@ -421,7 +423,7 @@ def append_psgc(result):
 
 def enrich_from_enrollment(result):
     """Private-pipeline enrollment enrichment (shared implementation)."""
-    return enrich_enrollment.enrich(result, ENROLLMENT_FILES)
+    return enrich_enrollment.enrich(result, str(PROJECT_ROOT))
 
 
 def main():

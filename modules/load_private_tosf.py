@@ -11,11 +11,18 @@ Includes coordinate cleaning:
   Pass 4: Flag suspect coordinates (placeholders, clusters, round numbers)
 """
 
+import json
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
+
 from .utils import normalize_school_id
 
 RAW_PATH = "data/bronze/live/Private School Seats and TOSF ao 2025Oct27.xlsx"
+SILVER_UNIVERSE_PATH = "data/silver/private_tosf_universe.parquet"
+SILVER_COORDS_PATH = "data/silver/private_tosf_coords.parquet"
+SILVER_COORDS_STATS_PATH = "data/silver/private_tosf_coords_stats.json"
 
 # Philippines bounding box
 PH_LAT_MIN, PH_LAT_MAX = 4.5, 21.5
@@ -37,8 +44,8 @@ MIN_DECIMAL_PLACES = 3
 MIN_CLUSTER_SIZE = 3
 
 
-def load_universe(project_root):
-    """Load the full private school universe from SCHOOLS WITHOUT SUBMISSION.
+def _load_universe(project_root):
+    """Internal: read SCHOOLS WITHOUT SUBMISSION sheet from bronze.
 
     Parameters
     ----------
@@ -80,11 +87,8 @@ def load_universe(project_root):
     return renamed[out_cols].reset_index(drop=True)
 
 
-def load_coordinates(project_root):
-    """Load and clean coordinates from RAW DATA sheet.
-
-    Returns the cleaned coordinates along with GASTPE flags and
-    per-row cleaning status.
+def _load_coordinates(project_root):
+    """Internal: read RAW DATA sheet and apply Pass 1-4 cleaning.
 
     Parameters
     ----------
@@ -290,3 +294,59 @@ def load_coordinates(project_root):
         "esc_participating", "shsvp_participating", "jdvp_participating",
     ]
     return df[out_cols].reset_index(drop=True), stats
+
+
+def preprocess(project_root):
+    """Read bronze TOSF Excel (both sheets), write two silver parquets + stats sidecar.
+
+    Produces:
+      - data/silver/private_tosf_universe.parquet
+      - data/silver/private_tosf_coords.parquet
+      - data/silver/private_tosf_coords_stats.json
+
+    Returns a tuple (universe_df, coords_df, clean_stats).
+    """
+    universe = _load_universe(project_root)
+    coords, clean_stats = _load_coordinates(project_root)
+
+    silver_dir = Path(project_root) / "data" / "silver"
+    silver_dir.mkdir(parents=True, exist_ok=True)
+
+    u_path = Path(project_root) / SILVER_UNIVERSE_PATH
+    c_path = Path(project_root) / SILVER_COORDS_PATH
+    s_path = Path(project_root) / SILVER_COORDS_STATS_PATH
+
+    universe.to_parquet(u_path, index=False)
+    coords.to_parquet(c_path, index=False)
+    with s_path.open("w") as f:
+        json.dump(clean_stats, f, indent=2)
+
+    print(f"  Silver written: {u_path}  ({len(universe):,} rows)")
+    print(f"  Silver written: {c_path}  ({len(coords):,} rows)")
+    print(f"  Silver written: {s_path}  (sidecar stats)")
+    return universe, coords, clean_stats
+
+
+def read_silver_universe(project_root):
+    """Read the LIS private-school universe silver parquet."""
+    path = Path(project_root) / SILVER_UNIVERSE_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"Silver not found: {path}. Run preprocess first.")
+    return pd.read_parquet(path)
+
+
+def read_silver_coords(project_root):
+    """Read the cleaned-coords silver parquet plus its stats sidecar.
+
+    Returns (coords_df, clean_stats_dict).
+    """
+    c_path = Path(project_root) / SILVER_COORDS_PATH
+    s_path = Path(project_root) / SILVER_COORDS_STATS_PATH
+    if not c_path.exists() or not s_path.exists():
+        raise FileNotFoundError(
+            f"Silver not found: {c_path} and/or {s_path}. Run preprocess first."
+        )
+    coords = pd.read_parquet(c_path)
+    with s_path.open() as f:
+        stats = json.load(f)
+    return coords, stats

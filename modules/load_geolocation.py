@@ -4,26 +4,18 @@ Internal DepEd file with possibly revised/updated coordinates. Lowest
 priority in the cascade. Sheet 'Geolocations', header at row index 0.
 """
 
+from pathlib import Path
+
 import pandas as pd
+
 from .utils import SOURCE_GEOLOCATION, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
 RAW_PATH = "data/bronze/frozen/Geolocation of Public Schools_DepEd.xlsx"
+SILVER_PATH = "data/silver/geolocation.parquet"
 
 
-def load(project_root):
-    """Load and normalize Geolocation of Public Schools.
-
-    Parameters
-    ----------
-    project_root : str or Path
-        Root directory of the project.
-
-    Returns
-    -------
-    pd.DataFrame
-        Normalized DataFrame with columns: school_id, school_name, latitude,
-        longitude, region, division, province, municipality, barangay, source.
-    """
+def preprocess(project_root):
+    """Read bronze Excel (Geolocations sheet), normalize, write silver parquet."""
     df = pd.read_excel(
         f"{project_root}/{RAW_PATH}",
         sheet_name="Geolocations",
@@ -56,4 +48,18 @@ def load(project_root):
         "region", "division", "province", "municipality", "barangay",
         "source", "_was_swapped",
     ]
-    return renamed[out_cols].reset_index(drop=True)
+    out = renamed[out_cols].reset_index(drop=True)
+
+    silver_path = Path(project_root) / SILVER_PATH
+    silver_path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(silver_path, index=False)
+    print(f"  Silver written: {silver_path}  ({len(out):,} rows)")
+    return out
+
+
+def read_silver(project_root):
+    """Read the materialized silver parquet."""
+    path = Path(project_root) / SILVER_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"Silver not found: {path}. Run preprocess first.")
+    return pd.read_parquet(path)

@@ -46,7 +46,7 @@ def run(result, project_root, sources_for_fallback=None, run_pass4=False,
         result with appended PSGC columns and validation flags.
     """
     print("\nAppending PSGC codes...")
-    psgc = load_psgc.load(project_root)
+    psgc = load_psgc.read_silver(project_root)
     print(f"  PSGC crosswalk: {len(psgc):,} schools")
 
     result = result.merge(psgc, on="school_id", how="left")

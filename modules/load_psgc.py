@@ -7,10 +7,14 @@ Handles Excel's leading-zero stripping by left-padding all PSGC codes
 to 10 digits.
 """
 
+from pathlib import Path
+
 import pandas as pd
+
 from .utils import normalize_school_id
 
 RAW_PATH = "data/bronze/frozen/SY 2024-2025 School Level Database WITH PSGC.xlsx"
+SILVER_PATH = "data/silver/psgc_crosswalk.parquet"
 PSGC_CODE_LENGTH = 10
 
 
@@ -21,22 +25,8 @@ def _pad_psgc(series):
     )
 
 
-def load(project_root):
-    """Load the PSGC crosswalk.
-
-    Parameters
-    ----------
-    project_root : str
-        Project root directory.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: school_id, psgc_region, psgc_region_name, psgc_province,
-        psgc_province_name, psgc_municity, psgc_municity_name,
-        psgc_barangay, psgc_barangay_name, urban_rural, income_class.
-        One row per school, keyed by school_id.
-    """
+def preprocess(project_root):
+    """Read bronze PSGC Excel, pad codes, dedupe, write silver parquet."""
     df = pd.read_excel(
         f"{project_root}/{RAW_PATH}",
         sheet_name="DB",
@@ -91,4 +81,18 @@ def load(project_root):
     ]
     # Only include columns that exist
     out_cols = [c for c in out_cols if c in renamed.columns]
-    return renamed[out_cols].reset_index(drop=True)
+    out = renamed[out_cols].reset_index(drop=True)
+
+    silver_path = Path(project_root) / SILVER_PATH
+    silver_path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(silver_path, index=False)
+    print(f"  Silver written: {silver_path}  ({len(out):,} rows)")
+    return out
+
+
+def read_silver(project_root):
+    """Read the materialized silver parquet."""
+    path = Path(project_root) / SILVER_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"Silver not found: {path}. Run preprocess first.")
+    return pd.read_parquet(path)
