@@ -37,6 +37,25 @@ class TestNormalizeSchoolID(unittest.TestCase):
         out = normalize_school_id(pd.Series(["123.0", "456", "789.00", "1.0"]))
         self.assertListEqual(out.tolist(), ["123", "456", "789.00", "1"])
 
+    def test_scalar_and_series_agree(self):
+        # Regression: paths used to diverge on strings containing ".0" twice.
+        cases = ["1.0", "100.0", "10.01", "1001.0", "1.01", "  123.0  "]
+        for c in cases:
+            scalar = normalize_school_id(c)
+            series = normalize_school_id(pd.Series([c])).iloc[0]
+            self.assertEqual(scalar, series, f"Divergence on {c!r}: scalar={scalar!r} vs series={series!r}")
+
+    def test_scalar_zfill(self):
+        self.assertEqual(normalize_school_id("12345", zfill=6), "012345")
+        self.assertEqual(normalize_school_id("123456", zfill=6), "123456")
+        # Non-digit strings not padded
+        self.assertEqual(normalize_school_id("ABC12", zfill=6), "ABC12")
+
+    def test_series_zfill(self):
+        out = normalize_school_id(pd.Series(["12345", "abc", "123456.0"]), zfill=6)
+        # "12345" → pad to 6; "abc" → non-digit, unchanged; "123456.0" → strip .0 then digit-only, already 6
+        self.assertListEqual(out.tolist(), ["012345", "abc", "123456"])
+
 
 class TestFixSwappedCoords(unittest.TestCase):
     def test_obviously_swapped_row_is_corrected(self):

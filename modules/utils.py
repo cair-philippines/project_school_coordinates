@@ -36,22 +36,47 @@ def has_valid_coords(df):
     )
 
 
-def normalize_school_id(value):
+def normalize_school_id(value, zfill=None):
     """Normalize a school ID — works on both a pandas Series and a scalar.
 
-    Strips whitespace and removes trailing '.0' from float-like strings.
-    Returns a cleaned Series or a scalar string (None if empty/null).
+    Strips whitespace and removes a trailing '.0' from float-like strings
+    (e.g., "123.0" -> "123"). The ".0" stripping is end-anchored — "1.01"
+    is preserved as-is. Optionally left-pads the result with zeros to a
+    fixed width to protect against Excel numeric coercion silently dropping
+    leading zeros (e.g., ID "012345" read as 12345).
+
+    Parameters
+    ----------
+    value : str, float, or pd.Series
+        Value(s) to normalize.
+    zfill : int, optional
+        If provided, the result is left-padded to this width with '0'.
+        Only applied to strings that look like digit-only IDs after
+        stripping. Default None (no padding).
+
+    Returns
+    -------
+    str or None (for scalar input) / pd.Series (for Series input)
     """
+    import re
     import pandas as pd
 
     if isinstance(value, pd.Series):
-        return value.astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+        out = value.astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+        if zfill is not None:
+            digit_only = out.str.fullmatch(r"\d+").fillna(False)
+            out = out.where(~digit_only, out.str.zfill(zfill))
+        return out
 
     # Scalar
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return None
-    s = str(value).strip().replace(".0", "") if str(value).strip().endswith(".0") else str(value).strip()
-    return s if s else None
+    s = re.sub(r"\.0$", "", str(value).strip())
+    if not s:
+        return None
+    if zfill is not None and s.isdigit():
+        s = s.zfill(zfill)
+    return s
 
 
 def fix_swapped_coords(df, source_label=""):
