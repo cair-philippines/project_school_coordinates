@@ -86,6 +86,6 @@ def load(project_root):
     out_cols = [
         "school_id", "school_name", "latitude", "longitude",
         "region", "division", "barangay",
-        "monitoring_chosen_source", "source",
+        "monitoring_chosen_source", "source", "_was_swapped",
     ]
     return validated[out_cols].reset_index(drop=True)

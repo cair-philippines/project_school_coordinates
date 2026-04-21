@@ -114,8 +114,13 @@ def fix_swapped_coords(df, source_label=""):
         new_lon[swap_mask] = lat[swap_mask]
         out["latitude"] = new_lat
         out["longitude"] = new_lon
+        # Signal which rows were fixed so downstream stages (cascade +
+        # validate_municipality) can preserve 'fixed_swap' as coord_status.
+        out["_was_swapped"] = swap_mask
         if source_label:
             print(f"  [{source_label}] Fixed {n_fixed:,} swapped lat/lon rows")
+    else:
+        out["_was_swapped"] = False
 
     return out, n_fixed
 

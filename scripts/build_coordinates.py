@@ -183,6 +183,7 @@ def apply_coord_cascade(universe, sources):
     result["coord_source"] = None
     result["monitoring_chosen_source"] = None
     result["sources_available"] = ""
+    result["_was_swapped"] = False
 
     # Index each source by school_id for fast lookup
     indexed = {}
@@ -207,6 +208,8 @@ def apply_coord_cascade(universe, sources):
         result.loc[idx, "latitude"] = matched["latitude"].values
         result.loc[idx, "longitude"] = matched["longitude"].values
         result.loc[idx, "coord_source"] = label
+        if "_was_swapped" in src.columns:
+            result.loc[idx, "_was_swapped"] = matched["_was_swapped"].values
 
         if label == SOURCE_MONITORING and "monitoring_chosen_source" in src.columns:
             result.loc[idx, "monitoring_chosen_source"] = (
@@ -419,6 +422,9 @@ def write_output(result, crosswalk, report_text):
     """Write parquet, CSV, and Excel output."""
     OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Drop internal signal columns before writing
+    result = result.drop(columns=["_was_swapped"], errors="ignore")
+
     coord_cols = [
         "school_id",
         "school_name",
@@ -511,7 +517,7 @@ def write_output(result, crosswalk, report_text):
         {"field": "coord_fallback_from", "value": "If non-null, the original higher-priority source whose coordinates were rejected as suspect (wrong municipality or outside all polygons). The school's published coordinates come from the next lower-priority source whose coordinates passed the municipal check."},
         {"field": "monitoring_chosen_source", "value": "If coord_source=monitoring_validated: which sub-source the validator chose (OSMapaaralan, NSBI, or New coordinates). Null otherwise."},
         {"field": "sources_available", "value": "Comma-separated list of all sources that had coordinates for this school. 'enrollment_only' if school is only known from enrollment data."},
-        {"field": "coord_status", "value": "Coordinate quality: 'valid' (in correct municipality), 'suspect' (outside all polygons or wrong municipality), or 'no_coords' (no coordinate source)."},
+        {"field": "coord_status", "value": "Coordinate quality: 'valid' (in correct municipality), 'fixed_swap' (lat/lon were auto-corrected because they were entered in reversed order), 'suspect' (outside all polygons, wrong municipality, placeholder default, cross-municipality cluster, or round-coordinate imprecision), or 'no_coords' (no coordinate source)."},
         {"field": "coord_rejection_reason", "value": "If suspect: 'outside_all_polygons' (outside all land polygons) or 'wrong_municipality' (in different municipality than declared). Null otherwise."},
         {"field": "region", "value": "DepEd administrative region (NIR-aware, from enrollment file)"},
         {"field": "old_region", "value": "DepEd region (pre-NIR naming; Negros Occidental in Region VI, Negros Oriental/Siquijor in Region VII)"},

@@ -199,10 +199,16 @@ def validate_municipality(df, project_root="."):
     """
     has_coords = df["latitude"].notna() & df["longitude"].notna()
 
-    # Initialize coord_status if not present (public pipeline doesn't have it)
+    # Initialize coord_status if not present (public pipeline doesn't have it).
+    # Rows whose coords were auto-corrected by fix_swapped_coords (signaled via
+    # the _was_swapped column propagated through the cascade) are initialized
+    # as 'fixed_swap' rather than 'valid' so the schema matches the private
+    # pipeline's audit-preserving behavior.
     if "coord_status" not in df.columns:
         df["coord_status"] = None
-        df.loc[has_coords, "coord_status"] = "valid"
+        was_swapped = df.get("_was_swapped", pd.Series(False, index=df.index)).fillna(False).astype(bool)
+        df.loc[has_coords & ~was_swapped, "coord_status"] = "valid"
+        df.loc[has_coords & was_swapped, "coord_status"] = "fixed_swap"
         df.loc[~has_coords, "coord_status"] = "no_coords"
         # For public schools without coords, set a generic reason
         df.loc[~has_coords & df["coord_status"].eq("no_coords"), "coord_rejection_reason"] = "no_coordinate_source"

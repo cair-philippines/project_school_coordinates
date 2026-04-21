@@ -71,7 +71,17 @@ class TestFixSwappedCoords(unittest.TestCase):
         df = pd.DataFrame({"latitude": [14.5, 8.0], "longitude": [121.0, 125.0]})
         fixed, n = fix_swapped_coords(df)
         self.assertEqual(n, 0)
-        pd.testing.assert_frame_equal(df, fixed)
+        # Coords unchanged; helper adds a _was_swapped signal column (all False).
+        pd.testing.assert_frame_equal(df, fixed[["latitude", "longitude"]])
+        self.assertIn("_was_swapped", fixed.columns)
+        self.assertFalse(fixed["_was_swapped"].any())
+
+    def test_swapped_row_marks_was_swapped(self):
+        df = pd.DataFrame({"latitude": [124.94, 14.5], "longitude": [11.0, 121.0]})
+        fixed, _ = fix_swapped_coords(df)
+        self.assertIn("_was_swapped", fixed.columns)
+        self.assertTrue(fixed.loc[0, "_was_swapped"])
+        self.assertFalse(fixed.loc[1, "_was_swapped"])
 
     def test_both_out_of_ph_not_swapped(self):
         # Coords both outside PH and not recoverable by swap — should not be fixed.

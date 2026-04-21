@@ -114,6 +114,7 @@ def load(project_root):
 
     out_cols = [
         "school_id", "school_name", "latitude", "longitude",
-        "region", "province", "municipality", "barangay", "source",
+        "region", "province", "municipality", "barangay",
+        "source", "_was_swapped",
     ]
     return df[out_cols].reset_index(drop=True)
