@@ -20,7 +20,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 import numpy as np
-from modules import load_private_tosf, load_enrollment, psgc_pipeline, enrich_enrollment
+from modules import load_private_tosf, load_enrollment, psgc_pipeline, enrich_enrollment, build_metrics
 
 OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "modified"
 OUTPUT_REPORT_DIR = PROJECT_ROOT / "output"
@@ -432,7 +432,10 @@ def main():
     result = append_psgc(result)
     result = enrich_from_enrollment(result)
     validate_and_report(result, clean_stats)
-    write_output(result)
+    out = write_output(result)
+
+    metrics = build_metrics.collect_private(out)
+    build_metrics.write(metrics, OUTPUT_REPORT_DIR / "build_private_metrics.json")
     print("\nDone.")
 
 

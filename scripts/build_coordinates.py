@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import pandas as pd
 import numpy as np
 from modules import load_monitoring, load_nsbi, load_geolocation, load_osmapaaralan, load_drrms
-from modules import build_crosswalk, load_enrollment, psgc_pipeline, enrich_enrollment
+from modules import build_crosswalk, load_enrollment, psgc_pipeline, enrich_enrollment, build_metrics
 from modules.utils import (
     COORD_PRIORITY,
     LOCATION_PRIORITY,
@@ -658,7 +658,10 @@ def main():
     result = append_psgc(result, sources)
     result = enrich_from_enrollment(result)
     report_text = validate_and_report(result, sources, crosswalk)
-    write_output(result, crosswalk, report_text)
+    coords_df = write_output(result, crosswalk, report_text)
+
+    metrics = build_metrics.collect_public(coords_df, crosswalk=crosswalk)
+    build_metrics.write(metrics, OUTPUT_REPORT_DIR / "build_public_metrics.json")
     print("\nDone.")
 
 
