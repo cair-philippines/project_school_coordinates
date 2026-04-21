@@ -30,12 +30,12 @@ from modules.utils import (
     haversine_km,
 )
 
-OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "modified"
+OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "gold"
 OUTPUT_REPORT_DIR = PROJECT_ROOT / "output"
 
 # Enrollment files for universe expansion (add paths here as needed)
 ENROLLMENT_FILES = [
-    PROJECT_ROOT / "data" / "raw" / "project_bukas_enrollment_2024-25.csv",
+    PROJECT_ROOT / "data" / "bronze" / "live" / "project_bukas_enrollment_2024-25.csv",
 ]
 
 
@@ -52,7 +52,7 @@ def _load_known_private_ids():
     private_ids = set()
 
     # From TOSF universe (LIS master list of private schools)
-    tosf_path = PROJECT_ROOT / "data" / "raw" / "Private School Seats and TOSF ao 2025Oct27.xlsx"
+    tosf_path = PROJECT_ROOT / "data" / "bronze" / "live" / "Private School Seats and TOSF ao 2025Oct27.xlsx"
     if tosf_path.exists():
         from modules import load_private_tosf
         universe = load_private_tosf.load_universe(str(PROJECT_ROOT))
@@ -661,7 +661,7 @@ def main():
     coords_df = write_output(result, crosswalk, report_text)
 
     metrics = build_metrics.collect_public(coords_df, crosswalk=crosswalk)
-    build_metrics.write(metrics, OUTPUT_REPORT_DIR / "build_public_metrics.json")
+    build_metrics.write(metrics, OUTPUT_DATA_DIR / "build_public_metrics.json")
     print("\nDone.")
 
 

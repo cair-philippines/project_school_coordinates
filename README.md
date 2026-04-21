@@ -52,19 +52,19 @@ Two separate pipelines address the distinct challenges of each sector:
 
 | File | Description |
 |---|---|
-| `data/modified/public_school_coordinates.parquet` | Canonical coordinates table |
-| `data/modified/public_school_id_crosswalk.parquet` | Historical → canonical school ID mapping (71,822 entries, canonical IDs consistently 6-digit) |
-| `data/modified/public_school_coordinates.csv` | CSV export of coordinates table |
-| `data/modified/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
+| `data/gold/public_school_coordinates.parquet` | Canonical coordinates table |
+| `data/gold/public_school_id_crosswalk.parquet` | Historical → canonical school ID mapping (71,822 entries, canonical IDs consistently 6-digit) |
+| `data/gold/public_school_coordinates.csv` | CSV export of coordinates table |
+| `data/gold/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
 | `output/build_public_report.txt` | Pipeline run summary and statistics |
 
 ### Private Schools — 12,167 schools (7,623 valid coords, 1,204 suspect coords, 87 fixed swap, 3,253 no coords)
 
 | File | Description |
 |---|---|
-| `data/modified/private_school_coordinates.parquet` | Cleaned coordinates table |
-| `data/modified/private_school_coordinates.csv` | CSV export |
-| `data/modified/private_school_coordinates.xlsx` | Excel workbook (Metadata + Private School Coordinates) |
+| `data/gold/private_school_coordinates.parquet` | Cleaned coordinates table |
+| `data/gold/private_school_coordinates.csv` | CSV export |
+| `data/gold/private_school_coordinates.xlsx` | Excel workbook (Metadata + Private School Coordinates) |
 | `output/build_private_report.txt` | Pipeline run summary and statistics |
 
 ### Public School Coordinates Schema
@@ -165,15 +165,18 @@ python scripts/build_coordinates.py
 python scripts/build_private_coordinates.py
 ```
 
-Both pipelines are deterministic and re-runnable. All outputs are regenerated from the raw source files in `data/raw/`.
+Both pipelines are deterministic and re-runnable. All outputs are regenerated from the raw DepEd source files in `data/bronze/`.
 
 ## Project Structure
 
 ```
 project_coordinates/
 ├── data/
-│   ├── raw/                              # Untouched source files (not committed)
-│   └── modified/                         # Pipeline outputs
+│   ├── bronze/                           # Raw DepEd source files (not committed)
+│   │   ├── frozen/                       # One-off snapshots (monitoring, geolocation, OSM, PSGC crosswalk)
+│   │   └── live/                         # Expected to refresh (NSBI, DRRMS, TOSF, enrollment)
+│   ├── gold/                             # Pipeline outputs (committed)
+│   └── reference/                        # External reference data (e.g. PSA shapefile; not committed)
 ├── scripts/
 │   ├── build_coordinates.py              # Public school pipeline orchestrator
 │   └── build_private_coordinates.py      # Private school pipeline orchestrator

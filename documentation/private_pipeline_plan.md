@@ -44,7 +44,7 @@ documentation/
 ### Step 0: Setup
 
 - Entry point: `scripts/build_private_coordinates.py`
-- Outputs to `data/modified/` (data) and `output/` (report)
+- Outputs to `data/gold/` (data) and `output/` (report)
 - Re-runnable end-to-end with no manual steps
 
 ### Step 1: Load & Normalize (`modules/load_private_tosf.py`)
@@ -173,9 +173,9 @@ Same process as the public pipeline. Enriches with `region` (NIR-aware), `old_re
 
 #### Output Files
 
-- `data/modified/private_school_coordinates.parquet`
-- `data/modified/private_school_coordinates.csv`
-- `data/modified/private_school_coordinates.xlsx` — single workbook with two sheets:
+- `data/gold/private_school_coordinates.parquet`
+- `data/gold/private_school_coordinates.csv`
+- `data/gold/private_school_coordinates.xlsx` — single workbook with two sheets:
   - **Metadata**: pipeline description, source info, run timestamp, summary statistics, cleaning thresholds
   - **Private School Coordinates**: the canonical coordinates table
 - `output/build_private_report.txt`

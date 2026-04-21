@@ -8,7 +8,7 @@ administrative metadata (region, division, province, municipality, barangay).
 import pandas as pd
 from .utils import SOURCE_NSBI, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
-RAW_PATH = "data/raw/SY 2023-2024 LIST OF SCHOOLS WITH LONGITUDE AND LATITUDE.xlsx"
+RAW_PATH = "data/bronze/live/SY 2023-2024 LIST OF SCHOOLS WITH LONGITUDE AND LATITUDE.xlsx"
 
 
 def load(project_root):

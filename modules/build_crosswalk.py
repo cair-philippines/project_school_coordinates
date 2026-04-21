@@ -13,7 +13,7 @@ import numpy as np
 from difflib import SequenceMatcher
 from .utils import normalize_school_id, haversine_km
 
-RAW_PATH = "data/raw/Geolocation of Public Schools_DepEd.xlsx"
+RAW_PATH = "data/bronze/frozen/Geolocation of Public Schools_DepEd.xlsx"
 SHEET_NAME = "School ID Mapping"
 
 # SY columns in chronological order

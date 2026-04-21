@@ -22,7 +22,7 @@ On 2026-04-16, a downstream project that builds an ML model for predicting Grade
 
 ### The problem they surfaced
 
-`modules/build_crosswalk.py` assigns canonical school IDs by reading the `school_id_2024` column of the "School ID Mapping" tab in `data/raw/Geolocation of Public Schools_DepEd.xlsx`.
+`modules/build_crosswalk.py` assigns canonical school IDs by reading the `school_id_2024` column of the "School ID Mapping" tab in `data/bronze/frozen/Geolocation of Public Schools_DepEd.xlsx`.
 
 In 2024, DepEd temporarily assigned 7-digit school IDs to ~7,000 schools by prepending `1` to their existing 6-digit IDs. By SY 2024-25, DepEd reverted to the standard 6-digit format. But the Excel's `school_id_2024` column still carries the transient 7-digit values for those schools.
 

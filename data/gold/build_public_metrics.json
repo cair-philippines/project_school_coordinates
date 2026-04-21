@@ -1,0 +1,69 @@
+{
+  "coord_fallback_from": {
+    "__null__": 48118,
+    "monitoring_validated": 57,
+    "nsbi_2324": 23,
+    "osmapaaralan": 56
+  },
+  "coord_rejection_reason": {
+    "__null__": 46538,
+    "no_coordinate_source": 580,
+    "outside_all_polygons": 67,
+    "round_coordinates": 19,
+    "wrong_municipality": 1050
+  },
+  "coord_source": {
+    "__null__": 580,
+    "drrms_imrs": 32,
+    "geolocation_deped": 126,
+    "monitoring_validated": 7669,
+    "nsbi_2324": 2209,
+    "osmapaaralan": 37638
+  },
+  "coord_status": {
+    "fixed_swap": 1,
+    "no_coords": 580,
+    "suspect": 1136,
+    "valid": 46537
+  },
+  "crosswalk": {
+    "canonical_length": {
+      "6": 71689,
+      "7": 133
+    },
+    "match_method": {
+      "official_mapping": 71685,
+      "spatial_name": 137
+    },
+    "rows": 71822,
+    "unique_canonical": 60578,
+    "unique_historical": 71550
+  },
+  "enrollment_status": {
+    "active": 47972,
+    "no_enrollment_reported": 282
+  },
+  "generated_at": "2026-04-21T09:46:36+00:00",
+  "location_source": {
+    "__null__": 64,
+    "drrms_imrs": 25,
+    "enrollment": 580,
+    "geolocation_deped": 230,
+    "monitoring_validated": 18,
+    "nsbi_2324": 47112,
+    "osmapaaralan": 225
+  },
+  "pipeline": "public",
+  "psgc_validation": {
+    "psgc_match": 42648,
+    "psgc_mismatch": 3601,
+    "psgc_no_validation": 2005
+  },
+  "row_count": 48254,
+  "school_id_length": {
+    "6": 48242,
+    "7": 12
+  },
+  "with_coordinates": 47674,
+  "without_coordinates": 580
+}

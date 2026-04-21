@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from .utils import SOURCE_OSM, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
-RAW_PATH = "data/raw/osmapaaralan_overpass_turbo_export.geojson"
+RAW_PATH = "data/bronze/frozen/osmapaaralan_overpass_turbo_export.geojson"
 
 
 def _centroid_of_polygon(coords):

@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 from .utils import normalize_school_id
 
-RAW_PATH = "data/raw/Private School Seats and TOSF ao 2025Oct27.xlsx"
+RAW_PATH = "data/bronze/live/Private School Seats and TOSF ao 2025Oct27.xlsx"
 
 # Philippines bounding box
 PH_LAT_MIN, PH_LAT_MAX = 4.5, 21.5

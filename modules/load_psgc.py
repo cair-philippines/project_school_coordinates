@@ -10,7 +10,7 @@ to 10 digits.
 import pandas as pd
 from .utils import normalize_school_id
 
-RAW_PATH = "data/raw/SY 2024-2025 School Level Database WITH PSGC.xlsx"
+RAW_PATH = "data/bronze/frozen/SY 2024-2025 School Level Database WITH PSGC.xlsx"
 PSGC_CODE_LENGTH = 10
 
 

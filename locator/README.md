@@ -55,7 +55,7 @@ Single container for deployment. The backend serves both the API and the built R
 | Frontend | React 19, Vite, Tailwind CSS v4, lucide-react |
 | Map | Leaflet + react-leaflet, CARTO Light / OSM / Esri Satellite |
 | Backend | FastAPI, pandas, pyarrow |
-| Data | Parquet files from `data/modified/` |
+| Data | Parquet files from `data/gold/` |
 
 ## Running the App
 

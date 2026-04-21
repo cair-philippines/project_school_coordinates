@@ -8,7 +8,7 @@ validated coordinates (~8,570 schools).
 import pandas as pd
 from .utils import SOURCE_MONITORING, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
-RAW_PATH = "data/raw/02. DepEd Data Encoding Monitoring Sheet.xlsx"
+RAW_PATH = "data/bronze/frozen/02. DepEd Data Encoding Monitoring Sheet.xlsx"
 SHEETS = ["1", "2", "3", "4", "5"]
 
 # Column mapping from raw header (row index 1) to normalized names.

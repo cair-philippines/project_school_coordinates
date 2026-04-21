@@ -31,8 +31,8 @@ filter_options = None
 def startup():
     global schools, filter_options
     # Support both local dev (locator/backend/) and Docker (/app/backend/)
-    local_data = Path(__file__).resolve().parent.parent.parent / "data" / "modified"
-    docker_data = Path(__file__).resolve().parent.parent / "data" / "modified"
+    local_data = Path(__file__).resolve().parent.parent.parent / "data" / "gold"
+    docker_data = Path(__file__).resolve().parent.parent / "data" / "gold"
     data_dir = local_data if local_data.exists() else docker_data
     schools = data_loader.load_all(data_dir)
     filter_options = data_loader.build_filter_options(schools)

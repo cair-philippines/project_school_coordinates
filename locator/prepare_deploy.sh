@@ -5,8 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DATA_SRC="$SCRIPT_DIR/../data/modified"
-DATA_DST="$SCRIPT_DIR/data/modified"
+DATA_SRC="$SCRIPT_DIR/../data/gold"
+DATA_DST="$SCRIPT_DIR/data/gold"
 
 mkdir -p "$DATA_DST"
 cp "$DATA_SRC/public_school_coordinates.parquet" "$DATA_DST/"

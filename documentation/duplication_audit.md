@@ -1,6 +1,6 @@
 # Public School Coordinates: Duplication Audit Report
 
-**Dataset:** `data/modified/public_school_coordinates.parquet`
+**Dataset:** `data/gold/public_school_coordinates.parquet`
 **Records:** 48,436 rows, 32 columns
 **Date:** 2026-03-21
 

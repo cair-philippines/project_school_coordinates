@@ -1,0 +1,41 @@
+{
+  "coord_rejection_reason": {
+    "__null__": 7674,
+    "coordinate_cluster": 58,
+    "invalid": 506,
+    "no_submission": 2385,
+    "not_in_lis": 156,
+    "out_of_bounds": 203,
+    "outside_all_polygons": 98,
+    "placeholder_default": 504,
+    "round_coordinates": 218,
+    "wrong_municipality": 365
+  },
+  "coord_status": {
+    "fixed_swap": 92,
+    "no_coords": 3250,
+    "suspect": 1243,
+    "valid": 7582
+  },
+  "enrollment_status": {
+    "active": 11939,
+    "no_enrollment_reported": 228
+  },
+  "gastpe": {
+    "esc_participating": 3682,
+    "jdvp_participating": 582,
+    "shsvp_participating": 3976
+  },
+  "generated_at": "2026-04-21T09:48:14+00:00",
+  "pipeline": "private",
+  "psgc_validation": {
+    "psgc_match": 5745,
+    "psgc_mismatch": 1816,
+    "psgc_no_validation": 4606
+  },
+  "row_count": 12167,
+  "school_id_length": {
+    "6": 12167
+  },
+  "with_coordinates": 7674
+}

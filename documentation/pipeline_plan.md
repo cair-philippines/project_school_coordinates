@@ -65,7 +65,7 @@ project_coordinates/
 ### Step 0: Setup
 
 - Entry point: `scripts/build_coordinates.py`
-- Outputs to `data/modified/` (data) and `output/` (report)
+- Outputs to `data/gold/` (data) and `output/` (report)
 - Re-runnable end-to-end with no manual steps
 
 ### Step 1: Load & Normalize Each Source
@@ -251,10 +251,10 @@ Enriches the output with metadata from the enrollment file (`project_bukas_enrol
 
 #### Output Files
 
-- `data/modified/public_school_coordinates.parquet`
-- `data/modified/public_school_coordinates.csv`
-- `data/modified/public_school_id_crosswalk.parquet`
-- `data/modified/public_school_coordinates.xlsx` — single workbook with three sheets:
+- `data/gold/public_school_coordinates.parquet`
+- `data/gold/public_school_coordinates.csv`
+- `data/gold/public_school_id_crosswalk.parquet`
+- `data/gold/public_school_coordinates.xlsx` — single workbook with three sheets:
   - **Metadata**: pipeline description, source priority, run timestamp, summary statistics
   - **Unified School Coordinates**: the canonical coordinates table
   - **School ID Crosswalk**: historical-to-canonical ID mapping

@@ -11,7 +11,7 @@ import pandas as pd
 import re
 from .utils import SOURCE_DRRMS, fix_swapped_coords, has_valid_coords, normalize_school_id, reject_out_of_ph_bounds
 
-RAW_PATH = "data/raw/DRRMS IMRS data 2025.csv"
+RAW_PATH = "data/bronze/live/DRRMS IMRS data 2025.csv"
 
 # Normalize long region names to short format used by other sources
 REGION_MAP = {

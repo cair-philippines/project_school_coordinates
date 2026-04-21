@@ -14,7 +14,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 from pathlib import Path
 
-SHAPEFILE_PATH = "data/modified/phl_admbnda_adm4_updated/phl_admbnda_adm4_updated.shp"
+SHAPEFILE_PATH = "data/reference/phl_admbnda_adm4_updated/phl_admbnda_adm4_updated.shp"
 
 # Buffer distance in degrees (~200m at Philippine latitudes) for the
 # municipal validation. Accounts for GPS inaccuracy, coastal schools on

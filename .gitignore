@@ -1,7 +1,14 @@
-# Raw data (large files, not committed)
-data/raw/*
-!data/raw/.gitkeep
-!data/raw/README.md
+# Bronze: raw DepEd source files (large, externally-sourced, not committed)
+data/bronze/**
+!data/bronze/README.md
+!data/bronze/frozen/
+!data/bronze/frozen/README.md
+!data/bronze/live/
+!data/bronze/live/README.md
+
+# Reference: external reference data (e.g. PSA shapefile; too large to commit)
+data/reference/**
+!data/reference/README.md
 
 # Build reports (regenerated)
 output/

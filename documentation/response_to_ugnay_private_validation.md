@@ -9,7 +9,7 @@
 
 ## Summary
 
-The suspect coordinate issue identified by project_ugnay has been addressed. A new **Pass 4 (suspect coordinate detection)** was added to the private school pipeline in project_coordinates. The affected schools are now flagged with `coord_status = "suspect"` in the regenerated output at `data/modified/private_school_coordinates.parquet`.
+The suspect coordinate issue identified by project_ugnay has been addressed. A new **Pass 4 (suspect coordinate detection)** was added to the private school pipeline in project_coordinates. The affected schools are now flagged with `coord_status = "suspect"` in the regenerated output at `data/gold/private_school_coordinates.parquet`.
 
 ## What Changed
 
@@ -73,4 +73,4 @@ The PSGC point-in-polygon validation (`psgc_validation` column) still runs on su
 ## Commit Reference
 
 - Commit: `d9039c8` on `cair-philippines/project_school_coordinates`
-- Files changed: `modules/load_private_tosf.py`, `scripts/build_private_coordinates.py`, `data/modified/private_school_coordinates.*`, documentation
+- Files changed: `modules/load_private_tosf.py`, `scripts/build_private_coordinates.py`, `data/gold/private_school_coordinates.*`, documentation

@@ -22,12 +22,12 @@ import pandas as pd
 import numpy as np
 from modules import load_private_tosf, load_enrollment, psgc_pipeline, enrich_enrollment, build_metrics
 
-OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "modified"
+OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "gold"
 OUTPUT_REPORT_DIR = PROJECT_ROOT / "output"
 
 # Enrollment files for universe expansion + status tagging (add paths here)
 ENROLLMENT_FILES = [
-    PROJECT_ROOT / "data" / "raw" / "project_bukas_enrollment_2024-25.csv",
+    PROJECT_ROOT / "data" / "bronze" / "live" / "project_bukas_enrollment_2024-25.csv",
 ]
 
 
@@ -435,7 +435,7 @@ def main():
     out = write_output(result)
 
     metrics = build_metrics.collect_private(out)
-    build_metrics.write(metrics, OUTPUT_REPORT_DIR / "build_private_metrics.json")
+    build_metrics.write(metrics, OUTPUT_DATA_DIR / "build_private_metrics.json")
     print("\nDone.")
 
 

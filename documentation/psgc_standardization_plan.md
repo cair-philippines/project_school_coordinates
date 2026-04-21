@@ -20,7 +20,7 @@ Key columns: `BEIS School ID` → `(PSGC) REGION`, `(PSGC) PROVINCE`, `(PSGC) MU
 
 ### Barangay Shapefile
 
-**File**: `data/modified/phl_admbnda_adm4_updated/phl_admbnda_adm4_updated.shp`
+**File**: `data/reference/phl_admbnda_adm4_updated/phl_admbnda_adm4_updated.shp`
 
 Barangay-level polygons with authoritative PSGC boundaries, updated to **Q4 2025 PSGC** using `cair-philippines/open-data-philippine-maps` update pipeline. Contains ~42,000 barangay polygons.
 
