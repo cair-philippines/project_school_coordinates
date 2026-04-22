@@ -8,23 +8,35 @@ DepEd maintains school coordinates across multiple systems that frequently disag
 
 ## Solution
 
-Two separate pipelines address the distinct challenges of each sector:
+Two separate pipelines address the distinct challenges of each sector.
 
 ### Public Schools
 
-1. **Normalizes** four coordinate sources into a common schema
+1. **Normalizes** five coordinate sources into a common schema
 2. **Resolves historical school ID changes** via a crosswalk built from official mappings and spatial+name deduplication
 3. **Selects coordinates** through a trust-based priority cascade reflecting DepEd's valuation of each source
-4. **Expands the school universe** using enrollment data to include schools with active enrollment but no geolocation data
-5. **Attaches administrative location columns** (region, province, municipality, barangay) from the best available source
-6. **Tracks lineage** so every coordinate can be traced back to its origin
+4. **Falls back** to the next-priority source when the primary coordinate is flagged suspect (wrong municipality or outside all land polygons)
+5. **Expands the school universe** using enrollment data to include schools with active enrollment but no geolocation data
+6. **Attaches administrative location columns** (region, province, municipality, barangay) from the best available source
+7. **Tracks lineage** so every coordinate can be traced back to its origin
 
 ### Private Schools
 
-1. **Cleans self-reported coordinates** (fixes swapped lat/lon, rejects invalid and out-of-bounds values)
+1. **Cleans self-reported coordinates** (fixes swapped lat/lon, rejects invalid and out-of-bounds values, flags suspect patterns)
 2. **Merges** cleaned coordinates with the official LIS universe to ensure complete coverage
 3. **Preserves GASTPE participation flags** (ESC, SHS VP, JDVP) for policy analysis
 4. **Tracks cleaning status** so every coordinate carries its provenance
+
+### Architecture
+
+The project uses a medallion layout:
+
+- **Bronze** (`data/bronze/`) — raw DepEd source files, original filenames preserved. Partitioned into `frozen/` (one-off snapshots) and `live/` (expected to refresh).
+- **Silver** (`data/silver/`) — preprocessed, normalized parquets with standardized filenames; a stable contract between DepEd's noise and the cascade algorithm.
+- **Gold** (`data/gold/`) — canonical published outputs consumed by downstream projects.
+- **Reference** (`data/reference/`) — external reference data (the PSA barangay shapefile used for spatial validation).
+
+Each loader module has a `preprocess()` function (bronze → silver) and a `read_silver()` function (silver → memory). The cascade, crosswalk, and validation algorithms read silver only.
 
 ## Data Sources
 
@@ -37,9 +49,9 @@ Two separate pipelines address the distinct challenges of each sector:
 | 3 | SY 2023-2024 List of Schools (NSBI) | Official school infrastructure inventory | ~47,200 |
 | 4 | Geolocation of Public Schools | Internal DepEd office revision | ~47,400 |
 | 5 | DRRMS IMRS 2025 | Self-reported via disaster incident reports | ~16,100 |
-| — | SY 2024-2025 Enrollment Data | Universe expansion (no coordinates, identifies missing schools) | ~48,000 |
+| — | SY 2024-2025 Enrollment Data | Universe expansion and metadata enrichment (no coordinates) | ~60,000 |
 
-### Private Schools (1 source, coordinate cleaning)
+### Private Schools
 
 | Source | Description | Schools |
 |---|---|---|
@@ -48,124 +60,66 @@ Two separate pipelines address the distinct challenges of each sector:
 
 ## Output
 
-### Public Schools — 48,140 schools (46,283 valid coords, 1,295 suspect coords, 562 no coords)
+### Public Schools — 48,254 schools (46,537 valid · 1 fixed_swap · 1,136 suspect · 580 no coords)
 
 | File | Description |
 |---|---|
 | `data/gold/public_school_coordinates.parquet` | Canonical coordinates table |
 | `data/gold/public_school_id_crosswalk.parquet` | Historical → canonical school ID mapping (71,822 entries, canonical IDs consistently 6-digit) |
-| `data/gold/public_school_coordinates.csv` | CSV export of coordinates table |
+| `data/gold/public_school_coordinates.csv` | CSV export |
 | `data/gold/public_school_coordinates.xlsx` | Excel workbook (Metadata + Coordinates + Crosswalk) |
+| `data/gold/build_public_metrics.json` | Structured run metrics for programmatic comparison |
 | `output/build_public_report.txt` | Pipeline run summary and statistics |
 
-### Private Schools — 12,167 schools (7,623 valid coords, 1,204 suspect coords, 87 fixed swap, 3,253 no coords)
+### Private Schools — 12,167 schools (7,582 valid · 92 fixed_swap · 1,243 suspect · 3,250 no coords)
 
 | File | Description |
 |---|---|
 | `data/gold/private_school_coordinates.parquet` | Cleaned coordinates table |
 | `data/gold/private_school_coordinates.csv` | CSV export |
 | `data/gold/private_school_coordinates.xlsx` | Excel workbook (Metadata + Private School Coordinates) |
+| `data/gold/build_private_metrics.json` | Structured run metrics for programmatic comparison |
 | `output/build_private_report.txt` | Pipeline run summary and statistics |
 
-### Public School Coordinates Schema
+### Schemas
 
-| Column | Description |
-|---|---|
-| `school_id` | Canonical (most recent) DepEd LIS School ID |
-| `school_name` | Best available school name |
-| `latitude` | Final latitude |
-| `longitude` | Final longitude |
-| `coord_source` | Which source provided the coordinates |
-| `monitoring_chosen_source` | Sub-source chosen by validator (if applicable) |
-| `sources_available` | All sources with coordinates for this school; `enrollment_only` if only known from enrollment |
-| `coord_status` | `valid`, `suspect` (over water or wrong municipality), or `no_coords` |
-| `coord_rejection_reason` | If suspect: `over_water` or `wrong_municipality` |
-| `region` | Administrative region (NIR-aware) |
-| `old_region` | Pre-NIR region naming |
-| `province` | Province |
-| `municipality` | City or municipality |
-| `barangay` | Barangay |
-| `location_source` | Which source provided the admin fields |
-| `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
-| `school_management` | DepEd, Non-Sectarian, Sectarian, SUC, etc. |
-| `annex_status` | Standalone/Mother/Annex/Mobile |
-| `offers_es` | Offers Elementary (True/False) |
-| `offers_jhs` | Offers JHS (True/False) |
-| `offers_shs` | Offers SHS (True/False) |
-| `shs_strand_offerings` | Comma-delimited SHS strands |
-| `psgc_region` | 10-digit PSGC region code |
-| `psgc_province` | 10-digit PSGC province code |
-| `psgc_municity` | 10-digit PSGC municipality/city code |
-| `psgc_barangay` | 10-digit PSGC barangay code (claimed) |
-| `psgc_observed_barangay` | PSGC barangay from point-in-polygon |
-| `psgc_validation` | `psgc_match`, `psgc_mismatch`, or `psgc_no_validation` |
-| `urban_rural` | Urban/Rural classification |
-| `income_class` | Municipal income class (DOF) |
-
-### School ID Crosswalk Schema
-
-| Column | Description |
-|---|---|
-| `historical_id` | Any school ID ever used |
-| `canonical_id` | Most recent / current school ID |
-| `match_method` | `official_mapping` or `spatial_name` |
-| `year_first_seen` | Earliest SY this historical ID appears |
-| `year_last_seen` | Latest SY this historical ID appears |
-
-### Private School Coordinates Schema
-
-| Column | Description |
-|---|---|
-| `school_id` | Validated BEIS School ID |
-| `school_name` | Official LIS school name |
-| `latitude` | Cleaned latitude (null if rejected) |
-| `longitude` | Cleaned longitude (null if rejected) |
-| `coord_status` | `valid`, `fixed_swap`, `suspect`, or `no_coords` |
-| `coord_rejection_reason` | If no_coords: `invalid`, `out_of_bounds`, `no_submission`, `not_in_lis`; if suspect: `placeholder_default`, `coordinate_cluster`, `round_coordinates` |
-| `region` | Administrative region (NIR-aware) |
-| `old_region` | Pre-NIR region naming |
-| `division` | Division |
-| `province` | Province |
-| `municipality` | City or municipality |
-| `barangay` | Barangay |
-| `esc_participating` | ESC program flag (1/0) |
-| `shsvp_participating` | SHS VP flag (1/0) |
-| `jdvp_participating` | JDVP flag (1/0) |
-| `enrollment_status` | `active` (in SY 2024-2025 enrollment) or `no_enrollment_reported` |
-| `school_management` | School management type |
-| `annex_status` | Standalone/Mother/Annex/Mobile |
-| `offers_es` | Offers Elementary (True/False) |
-| `offers_jhs` | Offers JHS (True/False) |
-| `offers_shs` | Offers SHS (True/False) |
-| `shs_strand_offerings` | Comma-delimited SHS strands |
-| `psgc_region` | 10-digit PSGC region code |
-| `psgc_province` | 10-digit PSGC province code |
-| `psgc_municity` | 10-digit PSGC municipality/city code |
-| `psgc_barangay` | 10-digit PSGC barangay code (claimed) |
-| `psgc_observed_barangay` | PSGC barangay from point-in-polygon |
-| `psgc_validation` | `psgc_match`, `psgc_mismatch`, or `psgc_no_validation` |
-| `urban_rural` | Urban/Rural classification |
-| `income_class` | Municipal income class (DOF) |
+Full column-level documentation in [documentation/schemas.md](documentation/schemas.md).
 
 ## Usage
 
 ### Prerequisites
 
-Python 3.11+ with `pandas`, `openpyxl`, `pyarrow`, and `numpy`.
+Python 3.11+ with `pandas`, `openpyxl`, `pyarrow`, `numpy`, `geopandas`, `shapely`.
 
-### Running the Pipelines
+### Full rebuild
 
 ```bash
 cd project_coordinates/
-
-# Public schools
-python scripts/build_coordinates.py
-
-# Private schools
-python scripts/build_private_coordinates.py
+python scripts/build.py --stage=all
 ```
 
-Both pipelines are deterministic and re-runnable. All outputs are regenerated from the raw DepEd source files in `data/bronze/`.
+Stages:
+- `--stage=silver` — preprocess bronze → silver only
+- `--stage=gold` — silver → gold (assumes silver already exists)
+- `--stage=all` — full rebuild (default)
+
+Both pipelines are deterministic and re-runnable. Outputs are regenerated from the raw DepEd source files in `data/bronze/`.
+
+### Rebuild with verification
+
+```bash
+bash scripts/rebuild_and_verify.sh
+```
+
+Runs the full rebuild, diffs the new metrics against the previous run, runs the regression test suite, and prints a single `PASS` / `REGRESSION` line. Exit 0 iff build and tests both succeed. Recommended after any change to `data/bronze/`.
+
+### Tests
+
+```bash
+python -m unittest discover tests
+```
+
+46 regression tests covering `normalize_school_id`, swap-fix and PH-bounds helpers, crosswalk identity-preferred dedup (including the `101701` conflation scenario), suspect-coord detection, PSGC validation coord_status awareness, and preprocessor silver-schema contracts.
 
 ## Project Structure
 
@@ -175,31 +129,39 @@ project_coordinates/
 │   ├── bronze/                           # Raw DepEd source files (not committed)
 │   │   ├── frozen/                       # One-off snapshots (monitoring, geolocation, OSM, PSGC crosswalk)
 │   │   └── live/                         # Expected to refresh (NSBI, DRRMS, TOSF, enrollment)
-│   ├── gold/                             # Pipeline outputs (committed)
-│   └── reference/                        # External reference data (e.g. PSA shapefile; not committed)
+│   ├── silver/                           # Preprocessed sources (committed)
+│   ├── gold/                             # Canonical pipeline outputs (committed)
+│   └── reference/                        # External reference data — PSA shapefile (not committed)
 ├── scripts/
-│   ├── build_coordinates.py              # Public school pipeline orchestrator
-│   └── build_private_coordinates.py      # Private school pipeline orchestrator
+│   ├── build.py                          # Unified entry point (--stage=all|silver|gold)
+│   ├── build_coordinates.py              # Public pipeline (internal module, invoked by build.py)
+│   ├── build_private_coordinates.py      # Private pipeline (internal module, invoked by build.py)
+│   ├── diff_metrics.py                   # Diff two build metrics JSON files
+│   └── rebuild_and_verify.sh             # Wrapper: rebuild + diff + tests + PASS/REGRESSION summary
 ├── modules/
-│   ├── __init__.py
 │   ├── build_crosswalk.py                # School ID crosswalk (Layer 1 + 2)
-│   ├── load_monitoring.py                # Public: Source A loader
-│   ├── load_osmapaaralan.py              # Public: Source B loader
-│   ├── load_nsbi.py                      # Public: Source C loader
-│   ├── load_geolocation.py               # Public: Source D loader
-│   ├── load_drrms.py                     # Public: Source E loader (DRRMS IMRS)
-│   ├── load_enrollment.py                # Public: enrollment-based universe expansion
-│   ├── load_psgc.py                      # PSGC crosswalk loader
-│   ├── validate_psgc.py                  # Shapefile-based spatial validation
-│   ├── load_private_tosf.py              # Private: TOSF loader + coordinate cleaning
-│   └── utils.py                          # Shared helpers
+│   ├── build_metrics.py                  # Structured build-metrics emitter
+│   ├── cascade_fallback.py               # Rescues suspect schools via lower-priority sources
+│   ├── enrich_enrollment.py              # Shared enrollment metadata enrichment
+│   ├── load_*.py                         # Per-source preprocess() + read_silver()
+│   ├── load_sos_mapping.py               # School ID Mapping sheet preprocessor
+│   ├── psgc_pipeline.py                  # Shared PSGC join + spatial validation
+│   ├── suspect_coords.py                 # Pass 4 detection (placeholder/cluster/round)
+│   ├── utils.py                          # Shared helpers (swap-fix, bounds, haversine, etc.)
+│   └── validate_psgc.py                  # Shapefile-based spatial validation
+├── tests/                                # 46 regression tests
 ├── documentation/
 │   ├── pipeline_plan.md                  # Public pipeline design and decisions
 │   ├── technical_notes.md                # Public processing and transformation details
 │   ├── private_pipeline_plan.md          # Private pipeline design and decisions
-│   └── private_technical_notes.md        # Private processing and transformation details
+│   ├── private_technical_notes.md        # Private processing and transformation details
+│   ├── schemas.md                        # Column reference for gold outputs
+│   ├── duplication_audit.md              # Audit of duplicate/near-duplicate records
+│   ├── crosswalk_7digit_reconciliation.md  # 7-digit canonical ID bug fix — narrative + results
+│   └── psgc_standardization_plan.md      # PSGC crosswalk + spatial validation design
+├── locator/                              # Piring web app (Cloud Run)
 ├── notebooks/                            # Ad-hoc analysis
-├── output/                               # Build reports
+├── output/                               # Build reports (not committed; regenerated each run)
 └── README.md
 ```
 
@@ -208,21 +170,30 @@ project_coordinates/
 ### Public Schools
 - **[Pipeline Plan](documentation/pipeline_plan.md)** — objective, source descriptions, priority cascade rationale, step-by-step design, output schemas, and design decisions.
 - **[Technical Notes](documentation/technical_notes.md)** — comprehensive processing details: source ingestion, column mappings, crosswalk algorithms, threshold choices, validation results, and known limitations.
-- **[Duplication Audit](documentation/duplication_audit.md)** — comprehensive audit of the public school coordinates dataset for duplicate and near-duplicate records. Identifies 25 same-barangay exact duplicates, 6 near-identical name pairs, 236 systematic X/1X ID pairs, and documents recommended actions (merge, investigate, retain) for each. Intended as a reference for championing smarter school data practices.
-- **[Crosswalk 7-Digit Reconciliation](documentation/crosswalk_7digit_reconciliation.md)** — traces the arc from a downstream school-transfer prediction project's bug report through implementation and pre/post results. Documents why the canonical school ID is now consistently 6-digit, the merge logic for intra-source duplicates, and the downstream impact for any project that joins on `school_id`.
+- **[Schemas](documentation/schemas.md)** — column-by-column reference for all gold outputs.
+- **[Duplication Audit](documentation/duplication_audit.md)** — audit of duplicate/near-duplicate records in the public dataset, with recommended actions per record. Reference for championing smarter school data practices.
+- **[Crosswalk 7-Digit Reconciliation](documentation/crosswalk_7digit_reconciliation.md)** — traces the arc from a downstream school-transfer prediction project's bug report through implementation and pre/post results. Documents why canonical school IDs are now consistently 6-digit, the merge logic for intra-source duplicates, and the downstream impact for any project that joins on `school_id`.
 
 ### Private Schools
 - **[Pipeline Plan](documentation/private_pipeline_plan.md)** — objective, source description, coordinate cleaning strategy, output schema, and design decisions.
-- **[Technical Notes](documentation/private_technical_notes.md)** — comprehensive processing details: ingestion, three-pass coordinate cleaning, merge logic, validation results, and known limitations.
+- **[Technical Notes](documentation/private_technical_notes.md)** — comprehensive processing details: ingestion, four-pass coordinate cleaning, merge logic, validation results, and known limitations.
+
+## See also
+
+- **[Piring — School Locator](locator/README.md)** — interactive web application for searching and visualizing these coordinates. Built on the unified gold datasets and deployed on Cloud Run.
 
 ## AI Disclosure
 
-This project was developed with substantial assistance from **Claude** (Anthropic), used as a collaborative coding and technical writing partner throughout the project lifecycle. Specifically, AI was used for:
+This project was developed with substantial assistance from **Claude** (Anthropic), used as a collaborative coding and technical writing partner throughout the project lifecycle. AI was used for:
 
 - **Pipeline design and architecture** — iterating on the priority cascade, crosswalk strategy, and modular structure through conversation
+- **Medallion refactor** — partitioning `data/` into bronze/silver/gold/reference layers and splitting loaders into `preprocess()` + `read_silver()` functions
 - **Code implementation** — writing Python modules, orchestrator scripts, and data processing logic
+- **Data quality audits and fixes** — identifying silent cross-school conflation bugs (e.g. the `101701` case), designing tie-break rules that prefer identity mappings, adding cascade fallback for suspect-coord schools, and raising ambiguous-mapping warnings at build time
+- **Regression testing** — authoring the test suite that pins critical decision points against future regressions
+- **Build infrastructure** — structured metrics JSON emission, the metrics diff tool, and the rebuild-and-verify wrapper
 - **Data exploration and analysis** — inspecting raw datasets, profiling coordinate quality, and diagnosing cross-source discrepancies
-- **Documentation** — drafting pipeline plans, technical notes, and this README
-- **Decision support** — evaluating trade-offs (e.g., crosswalk thresholds, coordinate cleaning pass order, enrollment expansion approach)
+- **Documentation** — drafting pipeline plans, technical notes, schemas reference, and this README
+- **Decision support** — evaluating trade-offs (e.g., crosswalk thresholds, coordinate cleaning pass order, cascade fallback policy, medallion layer gitignore policy)
 
 All design decisions, domain context (DepEd source valuation, school ID behavior, GASTPE program relevance), and data interpretation were directed by the human author. The AI did not have independent access to external systems or make unsupervised decisions about data handling.
