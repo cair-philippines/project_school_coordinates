@@ -303,6 +303,21 @@ def attach_psgc(gold):
     print(f"  Matched to polygon:   {matched:,}")
     print(f"  Outside all polygons: {outside:,}")
 
+    # Backfill province text for campuses nulled during harmonization (e.g.,
+    # where CHED had a region name in the province field). Use the shapefile's
+    # ADM2_EN name — authoritative and already loaded.
+    null_province = gold["province"].isna() & gold["psgc_observed_province"].notna()
+    if null_province.any():
+        province_lookup = (
+            gdf[["ADM2_PCODE", "ADM2_EN"]]
+            .drop_duplicates("ADM2_PCODE")
+            .set_index("ADM2_PCODE")["ADM2_EN"]
+        )
+        gold.loc[null_province, "province"] = (
+            gold.loc[null_province, "psgc_observed_province"].map(province_lookup)
+        )
+        print(f"  Province backfilled from PSGC shapefile: {int(null_province.sum()):,} campus(es)")
+
     return gold
 
 

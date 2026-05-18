@@ -814,7 +814,7 @@ uii_code,name,region,old_region,province,old_province,city_municipality,old_city
 02071,Saint Ferdinand College-Cabagan Campus,Region II,Region 02,Isabela,Isabela,Cabagan,Cabagan,Private,17.4280055,121.764307,valid,False,02,02031,0203106,0203106018
 02048,Saint Joseph's College of Baggao,Region II,Region 02,Cagayan,Cagayan,Baggao,Baggao,Private,17.8910584,121.8725583,valid,False,02,02015,0201506,0201506035
 02050,Saint Mary's University of Bayombong,Region II,Region 02,Nueva Vizcaya,Nueva Vizcaya,BAYOMBONG,BAYOMBONG,Private,16.4804228,121.1481284,valid,False,02,02050,0205005,0205005015
-02051,Saint Paul University Philippines,Region II,Region 02,,Cagayan Valley,Tuguegarao City,Tuguegarao City,Private,17.6170809,121.7232121,valid,False,02,02015,0201529,0201529034
+02051,Saint Paul University Philippines,Region II,Region 02,Cagayan,Cagayan Valley,Tuguegarao City,Tuguegarao City,Private,17.6170809,121.7232121,valid,False,02,02015,0201529,0201529034
 02070,Santiago City Colleges,Region II,Region 02,Isabela,Isabela,CITY OF SANTIAGO,CITY OF SANTIAGO,Private,16.6814947,121.546949,valid,False,02,02031,0203135,0203135036
 02047,St. Ferdinand College-Ilagan,Region II,Region 02,Isabela,Isabela,ILAGAN CITY (CAPITAL),ILAGAN CITY (CAPITAL),Private,17.1494187,121.8894106,valid,False,02,02031,0203114,0203114011
 02004,University of Cagayan Valley,Region II,Region 02,Cagayan,Cagayan,Tuguegarao City,Tuguegarao City,Private,17.6236067,121.7305781,valid,False,02,02015,0201529,0201529037
